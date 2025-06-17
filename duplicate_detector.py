@@ -6,6 +6,10 @@ from collections import Counter
 import colorsys
 from typing import List, Dict, Tuple, Optional
 import warnings
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import SnowballStemmer
 
 warnings.filterwarnings("ignore")
 
@@ -13,6 +17,20 @@ warnings.filterwarnings("ignore")
 class DuplicateDetector:
     def __init__(self, similarity_threshold: float = 0.80):
         self.similarity_threshold = similarity_threshold
+        self._setup_nltk()
+
+    def _setup_nltk(self):
+        """Инициализация NLTK ресурсов"""
+        try:
+            # Проверяем доступность русских стоп-слов
+            self.russian_stopwords = set(stopwords.words('russian'))
+            self.stemmer = SnowballStemmer('russian')
+            self.use_nltk = True
+        except Exception as e:
+            print(f"⚠️ NLTK resources not available: {e}")
+            self.russian_stopwords = set()
+            self.stemmer = None
+            self.use_nltk = False
 
     def generate_colors(
         self, num_colors: int, is_dark_theme: bool = False
@@ -36,10 +54,13 @@ class DuplicateDetector:
         return colors
 
     def normalize_text(self, text, sort_words=True):
-        """Нормализация текста с сортировкой слов по умолчанию"""
+        """Улучшенная нормализация текста с использованием NLTK"""
         if not isinstance(text, str): 
             return ""
+            
         text = text.lower()
+        
+        # Базовые замены для русского языка
         replacements = {
             r'\bобщество с ограниченной ответственностью\b': 'ооо', 
             r'(\bип\b)|(\bиндивидуальный предприниматель\b)': ' ',
@@ -51,16 +72,51 @@ class DuplicateDetector:
         }
         for p, r in replacements.items(): 
             text = re.sub(p, r, text)
-        text = re.sub(r'[^a-zа-я0-9\s]', ' ', text)
-        words = text.split()
+        
+        if self.use_nltk:
+            # Используем NLTK для более качественной обработки
+            try:
+                # Токенизация с помощью NLTK (лучше обрабатывает пунктуацию)
+                tokens = word_tokenize(text, language='russian')
+                
+                # Фильтруем только буквы и цифры
+                tokens = [token for token in tokens if re.match(r'^[a-zа-я0-9]+$', token)]
+                
+                # Удаляем русские стоп-слова
+                tokens = [token for token in tokens if token not in self.russian_stopwords]
+                
+                # Стемминг для приведения к корневой форме
+                if self.stemmer:
+                    tokens = [self.stemmer.stem(token) for token in tokens]
+                
+                words = tokens
+            except Exception as e:
+                # Fallback к базовой обработке при ошибке NLTK
+                text = re.sub(r'[^a-zа-я0-9\s]', ' ', text)
+                words = text.split()
+        else:
+            # Базовая обработка без NLTK
+            text = re.sub(r'[^a-zа-я0-9\s]', ' ', text)
+            words = text.split()
+        
+        # Убираем пустые строки и короткие слова (менее 2 символов)
+        words = [word for word in words if len(word.strip()) >= 2]
+        
         if sort_words: 
             words = sorted(words)
         return ' '.join(words).strip()
 
     def normalize_brand_name(self, text):
-        """Нормализация брендового имени без учета типовых слов"""
+        """Улучшенная нормализация брендового имени с NLTK"""
         base_normalized = self.normalize_text(text, sort_words=False)
-        generic_words = {'ооо', 'кафе', 'бар', 'ресторан', 'фастфуд', 'магазин', 'пиццерия', 'клуб', 'кофейня'}
+        
+        # Расширенный список типовых слов для более точной фильтрации
+        generic_words = {
+            'ооо', 'кафе', 'бар', 'ресторан', 'фастфуд', 'магазин', 'пиццерия', 
+            'клуб', 'кофейня', 'столов', 'ед', 'торгов', 'центр', 'дом', 'компан',
+            'предприят', 'индивидуальн', 'общеэств', 'ограничен', 'ответственност'
+        }
+        
         words = [word for word in base_normalized.split() if word not in generic_words]
         return ' '.join(sorted(words))
 
