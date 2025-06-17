@@ -79,9 +79,9 @@ class DuplicateDetectorApp:
                     id_col = col
                     break
 
-            # Используем min_votes=1 для максимальной чувствительности
+            # Используем min_votes=4 для хорошего баланса точности и покрытия
             self.duplicate_groups, self.stats = self.detector.find_duplicates(
-                df=self.current_df, name_column=name_col, address_column=address_col, id_column=id_col, min_votes=6
+                df=self.current_df, name_column=name_col, address_column=address_col, id_column=id_col, min_votes=4
             )
             print(f"🔍 Найденные группы дубликатов: {self.duplicate_groups}")
             print(f"🔍 Количество групп: {len(self.duplicate_groups) if self.duplicate_groups else 0}")
@@ -111,7 +111,7 @@ class DuplicateDetectorApp:
                         "data": self.current_df.values.tolist(),
                         "headers": self.current_df.columns.tolist(),
                     },
-                    f"✅ **No duplicates found!**\n\nAll {len(self.current_df)} records are unique using committee-based algorithm (6 judges, min 1 vote)",
+                    f"✅ **No duplicates found!**\n\nAll {len(self.current_df)} records are unique using committee-based algorithm (6 judges, min 4 votes)",
                 )
 
         except Exception as e:

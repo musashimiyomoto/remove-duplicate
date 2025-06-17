@@ -150,8 +150,8 @@ class DuplicateDetector:
             for j in range(i + 1, len(ids)):
                 id1, id2 = ids[i], ids[j]
                 addr_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_addr'], df.loc[id2, 'norm_addr'])
-                # Понижаем пороги: было 97/70, стало 90/60
-                if addr_sim > 90:
+                # Понижаем пороги: было 97/70, стало 88/60 (включаем граничные случаи)
+                if addr_sim >= 88:
                     name_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_name'], df.loc[id2, 'norm_name'])
                     if name_sim > 60:
                         duplicates.add(frozenset([id1, id2]))
