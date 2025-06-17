@@ -3,6 +3,7 @@ from unidecode import unidecode
 from fuzzywuzzy import fuzz
 import re
 from typing import List, Dict, Tuple, Optional
+import colorsys
 
 class DuplicateDetector:
     def __init__(self, similarity_threshold: int = 85):
@@ -32,6 +33,23 @@ class DuplicateDetector:
                 r'\bнаб\b': 'набережная'
             }
         }
+        
+    def generate_colors(self, num_colors: int, is_dark_theme: bool = False) -> List[str]:
+        colors = []
+        for i in range(num_colors):
+            hue = i / num_colors
+            
+            if is_dark_theme:
+                saturation = 0.6 + (i % 3) * 0.1
+                lightness = 0.4 + (i % 4) * 0.1
+            else:
+                saturation = 0.4 + (i % 3) * 0.1
+                lightness = 0.85 + (i % 3) * 0.05
+            
+            rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
+            hex_color = "#{:02x}{:02x}{:02x}".format(int(rgb[0]*255), int(rgb[1]*255), int(rgb[2]*255))
+            colors.append(hex_color)
+        return colors
         
     def normalize_text(self, text: str, remove_org_forms: bool = True, remove_venue_types: bool = True) -> str:
         if pd.isna(text):
@@ -128,9 +146,6 @@ class DuplicateDetector:
         return max(similarities) if similarities else 0
 
     def find_duplicates(self, df: pd.DataFrame, name_column: str, address_column: Optional[str] = None, id_column: Optional[str] = None) -> Tuple[List[List[int]], Dict]:
-        """
-        Возвращает дубликаты и статистику
-        """
         duplicate_groups = []
         processed_indices = set()
         
@@ -170,35 +185,59 @@ class DuplicateDetector:
         
         return duplicate_groups, stats
 
-    def create_styled_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]]) -> Dict:
-        """
-        Создает стилизованный DataFrame с подсветкой дубликатов
-        """
-        # Цвета для разных групп дубликатов
-        colors = [
-            '#ffcccc',  # Светло-красный
-            '#ccffcc',  # Светло-зеленый
-            '#ccccff',  # Светло-синий
-            '#ffffcc',  # Светло-желтый
-            '#ffccff',  # Светло-фиолетовый
-            '#ccffff',  # Светло-голубой
-            '#ffddcc',  # Светло-оранжевый
-            '#ddccff',  # Светло-лиловый
-        ]
+    def create_grouped_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]]) -> pd.DataFrame:
+        if not duplicate_groups:
+            result_df = df.copy()
+            result_df['Duplicate_Group'] = 0
+            return result_df
+        
+        grouped_data = []
+        group_counter = 1
+        
+        for group in duplicate_groups:
+            for row_idx in group:
+                row_data = df.iloc[row_idx].to_dict()
+                row_data['Duplicate_Group'] = group_counter
+                grouped_data.append(row_data)
+            group_counter += 1
+        
+        remaining_indices = set(range(len(df))) - set(idx for group in duplicate_groups for idx in group)
+        for row_idx in remaining_indices:
+            row_data = df.iloc[row_idx].to_dict()
+            row_data['Duplicate_Group'] = 0
+            grouped_data.append(row_data)
+        
+        result_df = pd.DataFrame(grouped_data)
+        result_df = result_df.sort_values(['Duplicate_Group', result_df.columns[0]], ascending=[False, True])
+        
+        return result_df
+
+    def create_styled_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]], is_dark_theme: bool = False) -> Dict:
+        grouped_df = self.create_grouped_dataframe(df, duplicate_groups)
+        
+        if not duplicate_groups:
+            return {
+                "data": grouped_df.values.tolist(),
+                "headers": grouped_df.columns.tolist(),
+                "metadata": {"styling": []},
+            }
+        
+        colors = self.generate_colors(len(duplicate_groups), is_dark_theme)
         
         styling = []
-        for _ in range(len(df)):
-            styling.append([""] * len(df.columns))
+        for _ in range(len(grouped_df)):
+            styling.append([""] * len(grouped_df.columns))
         
-        for group_idx, group in enumerate(duplicate_groups):
-            color = colors[group_idx % len(colors)]
-            for row_idx in group:
-                for col_idx in range(len(df.columns)):
-                    styling[row_idx][col_idx] = f"background-color: {color};"
+        for idx, row in grouped_df.iterrows():
+            group_num = row['Duplicate_Group']
+            if group_num > 0:
+                color = colors[(group_num - 1) % len(colors)]
+                for col_idx in range(len(grouped_df.columns)):
+                    styling[idx][col_idx] = f"background-color: {color};"
         
         return {
-            "data": df.values.tolist(),
-            "headers": df.columns.tolist(),
+            "data": grouped_df.values.tolist(),
+            "headers": grouped_df.columns.tolist(),
             "metadata": {
                 "styling": styling,
             },
