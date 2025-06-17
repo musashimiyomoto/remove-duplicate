@@ -1,8 +1,10 @@
 import pandas as pd
 import re
-from typing import List, Dict, Tuple, Optional
+from thefuzz import fuzz
+import networkx as nx
+from collections import Counter
 import colorsys
-from difflib import SequenceMatcher
+from typing import List, Dict, Tuple, Optional
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -11,15 +13,6 @@ warnings.filterwarnings("ignore")
 class DuplicateDetector:
     def __init__(self, similarity_threshold: float = 0.80):
         self.similarity_threshold = similarity_threshold
-        self.vectorizer = None
-
-        self.patterns = {
-            "extra_spaces": r"\s+",
-            "punctuation": r"[^\w\s\d]",
-            "org_forms": r"\b(ооо|оао|зао|ип|тов|ltd|llc|inc|corp|co|общество|предприятие)\b",
-            "address_numbers": r"\b\d+[\/\-]?\d*\b",
-            "postal_codes": r"\b\d{5,6}\b",
-        }
 
     def generate_colors(
         self, num_colors: int, is_dark_theme: bool = False
@@ -42,118 +35,96 @@ class DuplicateDetector:
             colors.append(hex_color)
         return colors
 
-    def normalize_text(self, text: str, preserve_numbers: bool = True) -> str:
-        if pd.isna(text) or not text:
+    def normalize_text(self, text, sort_words=True):
+        """Нормализация текста с сортировкой слов по умолчанию"""
+        if not isinstance(text, str): 
             return ""
+        text = text.lower()
+        replacements = {
+            r'\bобщество с ограниченной ответственностью\b': 'ооо', 
+            r'(\bип\b)|(\bиндивидуальный предприниматель\b)': ' ',
+            r'\bгород\b': 'г', 
+            r'\bулица\b': 'ул', 
+            r'\bдом\b': 'д', 
+            r'\bстроение\b': 'стр', 
+            r'\bкорпус\b': 'к',
+        }
+        for p, r in replacements.items(): 
+            text = re.sub(p, r, text)
+        text = re.sub(r'[^a-zа-я0-9\s]', ' ', text)
+        words = text.split()
+        if sort_words: 
+            words = sorted(words)
+        return ' '.join(words).strip()
 
-        text = str(text).strip().lower()
+    def normalize_brand_name(self, text):
+        """Нормализация брендового имени без учета типовых слов"""
+        base_normalized = self.normalize_text(text, sort_words=False)
+        generic_words = {'ооо', 'кафе', 'бар', 'ресторан', 'фастфуд', 'магазин', 'пиццерия', 'клуб', 'кофейня'}
+        words = [word for word in base_normalized.split() if word not in generic_words]
+        return ' '.join(sorted(words))
 
-        if preserve_numbers:
-            text = re.sub(r'[,.\-№"\'()]', " ", text)
-        else:
-            text = re.sub(self.patterns["punctuation"], " ", text)
+    # ==========================================================================
+    # ОПРЕДЕЛЕНИЕ ЧЕТЫРЕХ НЕЗАВИСИМЫХ СУДЕЙ
+    # ==========================================================================
 
-        text = re.sub(self.patterns["extra_spaces"], " ", text).strip()
+    def get_duplicates_judge1_strict(self, df):
+        """Судья 1: 'Строгий Контроль'."""
+        duplicates = set()
+        ids = df.index.tolist()
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                id1, id2 = ids[i], ids[j]
+                name_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_name'], df.loc[id2, 'norm_name'])
+                addr_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_addr'], df.loc[id2, 'norm_addr'])
+                if addr_sim > 95 and name_sim > 90:
+                    duplicates.add(frozenset([id1, id2]))
+        return duplicates
 
-        return text
+    def get_duplicates_judge2_geo(self, df):
+        """Судья 2: 'Гео-Аналитик'."""
+        duplicates = set()
+        ids = df.index.tolist()
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                id1, id2 = ids[i], ids[j]
+                addr_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_addr'], df.loc[id2, 'norm_addr'])
+                if addr_sim > 97:
+                    name_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_name'], df.loc[id2, 'norm_name'])
+                    if name_sim > 70:
+                        duplicates.add(frozenset([id1, id2]))
+        return duplicates
 
-    def normalize_name(self, name: str) -> str:
-        if pd.isna(name) or not name:
-            return ""
+    def get_duplicates_judge3_brand(self, df):
+        """Судья 3: 'Анализ по Бренду'."""
+        duplicates = set()
+        ids = df.index.tolist()
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                id1, id2 = ids[i], ids[j]
+                brand_name_sim = fuzz.token_set_ratio(df.loc[id1, 'brand_name'], df.loc[id2, 'brand_name'])
+                if brand_name_sim > 95:
+                    addr_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_addr'], df.loc[id2, 'norm_addr'])
+                    if addr_sim > 75:
+                        duplicates.add(frozenset([id1, id2]))
+        return duplicates
 
-        name = str(name).strip().lower()
-
-        name = re.sub(self.patterns["org_forms"], "", name, flags=re.IGNORECASE)
-
-        name = re.sub(r"[^\w\s]", " ", name)
-        name = re.sub(self.patterns["extra_spaces"], " ", name).strip()
-
-        return name
-
-    def extract_address_numbers(self, address: str) -> List[str]:
-        if pd.isna(address) or not address:
-            return []
-
-        numbers = re.findall(self.patterns["address_numbers"], str(address))
-        return numbers
-
-    def string_similarity(self, str1: str, str2: str) -> float:
-        if not str1 or not str2:
-            return 0.0
-        return SequenceMatcher(None, str1, str2).ratio()
-
-    def name_similarity(self, name1: str, name2: str) -> float:
-        if not name1 or not name2:
-            return 0.0
-
-        norm1 = self.normalize_name(name1)
-        norm2 = self.normalize_name(name2)
-
-        if norm1 == norm2 and len(norm1) > 2:
-            return 1.0
-
-        basic_sim = self.string_similarity(norm1, norm2)
-
-        if norm1 in norm2 or norm2 in norm1:
-            return max(basic_sim, 0.9)
-
-        return basic_sim
-
-    def address_similarity(self, addr1: str, addr2: str) -> float:
-        if not addr1 or not addr2:
-            return 0.0
-
-        norm1 = self.normalize_text(addr1, preserve_numbers=True)
-        norm2 = self.normalize_text(addr2, preserve_numbers=True)
-
-        numbers1 = self.extract_address_numbers(addr1)
-        numbers2 = self.extract_address_numbers(addr2)
-
-        if numbers1 and numbers2:
-            common_numbers = set(numbers1).intersection(set(numbers2))
-            if not common_numbers:
-                return 0.0
-
-        basic_sim = self.string_similarity(norm1, norm2)
-
-        if (numbers1 and not numbers2) or (numbers2 and not numbers1):
-            basic_sim *= 0.8
-
-        return basic_sim
-
-    def are_duplicates(
-        self,
-        row1: pd.Series,
-        row2: pd.Series,
-        name_col: str,
-        address_col: Optional[str] = None,
-    ) -> bool:  
-        name1 = str(row1[name_col]) if pd.notna(row1[name_col]) else ""
-        name2 = str(row2[name_col]) if pd.notna(row2[name_col]) else ""
-
-        name_sim = self.name_similarity(name1, name2)
-
-        if name_sim < 0.6:
-            return False
-
-        if address_col and address_col in row1.index and address_col in row2.index:
-            addr1 = str(row1[address_col]) if pd.notna(row1[address_col]) else ""
-            addr2 = str(row2[address_col]) if pd.notna(row2[address_col]) else ""
-
-            addr_sim = self.address_similarity(addr1, addr2)
-
-            if addr_sim == 0.0:
-                return False
-
-            combined_sim = name_sim * 0.7 + addr_sim * 0.3
-
-            return (
-                name_sim >= 0.85
-                or (name_sim >= 0.7 and addr_sim >= 0.7)
-                or combined_sim >= 0.75
-            )
-        else:
-            return name_sim >= 0.85
+    def get_duplicates_judge4_weighted(self, df):
+        """Судья 4: 'Интегратор' (Взвешенная оценка)."""
+        duplicates = set()
+        SIMILARITY_THRESHOLD = 88  # Порог для большей точности
+        NAME_WEIGHT = 0.45
+        ADDRESS_WEIGHT = 0.55
+        ids = df.index.tolist()
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                id1, id2 = ids[i], ids[j]
+                name_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_name'], df.loc[id2, 'norm_name'])
+                addr_sim = fuzz.token_set_ratio(df.loc[id1, 'norm_addr'], df.loc[id2, 'norm_addr'])
+                weighted_similarity = (name_sim * NAME_WEIGHT) + (addr_sim * ADDRESS_WEIGHT)
+                if weighted_similarity >= SIMILARITY_THRESHOLD:
+                    duplicates.add(frozenset([id1, id2]))
+        return duplicates
 
     def find_duplicates(
         self,
@@ -161,8 +132,10 @@ class DuplicateDetector:
         name_column: str,
         address_column: Optional[str] = None,
         id_column: Optional[str] = None,
+        min_votes: int = 2
     ) -> Tuple[List[List[int]], Dict]:
-
+        """Основная функция поиска дубликатов с использованием консилиума из 4 судей"""
+        
         if df.empty:
             return [], {
                 "total_records": 0,
@@ -171,139 +144,140 @@ class DuplicateDetector:
                 "unique_records": 0,
             }
 
-        duplicate_groups = []
-        processed_indices = set()
+        # Подготовка данных
+        df_work = df.copy()
+        
+        # Если есть колонка ID, используем её, иначе создаём свою
+        if id_column and id_column in df_work.columns:
+            df_work['Id'] = df_work[id_column]
+        else:
+            df_work['Id'] = range(len(df_work))
+        
+        df_work = df_work.set_index('Id', drop=False)
+        
+        # Нормализация данных
+        df_work['norm_name'] = df_work[name_column].apply(lambda x: self.normalize_text(str(x) if pd.notna(x) else "", True))
+        if address_column and address_column in df_work.columns:
+            df_work['norm_addr'] = df_work[address_column].apply(lambda x: self.normalize_text(str(x) if pd.notna(x) else "", True))
+        else:
+            df_work['norm_addr'] = ""
+        df_work['brand_name'] = df_work[name_column].apply(lambda x: self.normalize_brand_name(str(x) if pd.notna(x) else ""))
+        
+        # Запуск всех судей
+        results1 = self.get_duplicates_judge1_strict(df_work)
+        results2 = self.get_duplicates_judge2_geo(df_work)
+        results3 = self.get_duplicates_judge3_brand(df_work)
+        results4 = self.get_duplicates_judge4_weighted(df_work)
 
-        for i in range(len(df)):
-            if i in processed_indices:
-                continue
+        # Подсчёт голосов
+        all_votes = Counter(results1)
+        all_votes.update(results2)
+        all_votes.update(results3)
+        all_votes.update(results4)
 
-            current_group = [i]
+        # Найдём пары, набравшие достаточное количество голосов
+        final_duplicate_pairs = [list(pair) for pair, count in all_votes.items() if count >= min_votes]
 
-            for j in range(i + 1, len(df)):
-                if j in processed_indices:
-                    continue
+        # Группировка с использованием NetworkX
+        G = nx.Graph()
+        G.add_edges_from(final_duplicate_pairs)
+        connected_components = list(nx.connected_components(G))
+        final_groups = [list(group) for group in connected_components if len(group) > 1]
+        
+        # Преобразуем ID обратно в индексы DataFrame
+        final_groups_indices = []
+        for group in final_groups:
+            group_indices = []
+            for id_val in group:
+                # Найдём соответствующий индекс в исходном DataFrame
+                matching_rows = df[df.index == id_val].index.tolist()
+                if matching_rows:
+                    group_indices.append(matching_rows[0])
+                else:
+                    # Если не найдено по ID, попробуем найти по позиции
+                    if isinstance(id_val, int) and id_val < len(df):
+                        group_indices.append(id_val)
+            if group_indices:
+                final_groups_indices.append(group_indices)
 
-                if self.are_duplicates(
-                    df.iloc[i], df.iloc[j], name_column, address_column
-                ):
-                    current_group.append(j)
-
-            if len(current_group) > 1:
-                duplicate_groups.append(current_group)
-                processed_indices.update(current_group)
-
+        # Статистика
         stats = {
             "total_records": len(df),
-            "duplicate_groups": len(duplicate_groups),
-            "duplicate_records": sum(len(group) for group in duplicate_groups),
-            "unique_records": len(df) - sum(len(group) for group in duplicate_groups),
+            "duplicate_groups": len(final_groups_indices),
+            "duplicate_records": sum(len(group) for group in final_groups_indices),
+            "unique_records": len(df) - sum(len(group) for group in final_groups_indices),
         }
 
-        return duplicate_groups, stats
+        return final_groups_indices, stats
 
-    def create_grouped_dataframe(
-        self, df: pd.DataFrame, duplicate_groups: List[List[int]]
-    ) -> pd.DataFrame:
-        if not duplicate_groups:
-            result_df = df.copy()
-            result_df["Duplicate_Group"] = 0
-            return result_df
-
-        grouped_data = []
-        group_counter = 1
-
-        for group in duplicate_groups:
-            for row_idx in group:
-                row_data = df.iloc[row_idx].to_dict()
-                row_data["Duplicate_Group"] = group_counter
-                grouped_data.append(row_data)
-            group_counter += 1
-
-        remaining_indices = set(range(len(df))) - set(
-            idx for group in duplicate_groups for idx in group
+    def create_grouped_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]]) -> pd.DataFrame:
+        """Создание DataFrame с группировкой дубликатов"""
+        grouped_df = df.copy()
+        grouped_df['Duplicate_Group'] = 'Unique'
+        
+        for i, group in enumerate(duplicate_groups):
+            for idx in group:
+                if idx < len(grouped_df):
+                    grouped_df.loc[grouped_df.index[idx], 'Duplicate_Group'] = f'Group_{i+1}'
+        
+        # Сортировка: сначала группы дубликатов, потом уникальные
+        grouped_df['sort_key'] = grouped_df['Duplicate_Group'].apply(
+            lambda x: (0, x) if x != 'Unique' else (1, x)
         )
-        for row_idx in remaining_indices:
-            row_data = df.iloc[row_idx].to_dict()
-            row_data["Duplicate_Group"] = 0
-            grouped_data.append(row_data)
+        grouped_df = grouped_df.sort_values('sort_key').drop('sort_key', axis=1)
+        
+        return grouped_df
 
-        result_df = pd.DataFrame(grouped_data)
-        result_df = result_df.sort_values(
-            ["Duplicate_Group", result_df.columns[0]], ascending=[False, True]
-        )
-
-        return result_df
-
-    def create_styled_dataframe(
-        self,
-        df: pd.DataFrame,
-        duplicate_groups: List[List[int]],
-        is_dark_theme: bool = False,
-    ) -> Dict:
-        grouped_df = self.create_grouped_dataframe(df, duplicate_groups)
-
+    def create_styled_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]], is_dark_theme: bool = False) -> Dict:
+        """Создание стилизованного DataFrame для отображения в интерфейсе"""
         if not duplicate_groups:
             return {
-                "data": grouped_df.values.tolist(),
-                "headers": grouped_df.columns.tolist(),
-                "metadata": {"styling": []},
+                "data": df.values.tolist(),
+                "headers": df.columns.tolist(),
             }
-
+        
         colors = self.generate_colors(len(duplicate_groups), is_dark_theme)
-
-        styling = []
-        for _ in range(len(grouped_df)):
-            styling.append([""] * len(grouped_df.columns))
-
-        for idx, row in grouped_df.iterrows():
-            group_num = row["Duplicate_Group"]
-            if group_num > 0:
-                color = colors[(group_num - 1) % len(colors)]
-                for col_idx in range(len(grouped_df.columns)):
-                    styling[idx][col_idx] = f"background-color: {color};"
-
+        
+        # Создаём карту цветов для каждой строки
+        row_colors = [''] * len(df)
+        for i, group in enumerate(duplicate_groups):
+            for idx in group:
+                if idx < len(df):
+                    row_colors[idx] = colors[i % len(colors)]
+        
+        # Подготавливаем данные с цветовой разметкой
+        styled_data = []
+        for i, row in enumerate(df.values.tolist()):
+            if row_colors[i]:
+                styled_row = [f"<div style='background-color: {row_colors[i]}; padding: 5px;'>{cell}</div>" for cell in row]
+                styled_data.append(styled_row)
+            else:
+                styled_data.append(row)
+        
         return {
-            "data": grouped_df.values.tolist(),
-            "headers": grouped_df.columns.tolist(),
-            "metadata": {
-                "styling": styling,
-            },
+            "data": styled_data,
+            "headers": df.columns.tolist(),
         }
 
     def find_name_column(self, df: pd.DataFrame) -> Optional[str]:
-        columns = [col.lower() for col in df.columns]
-
-        name_keywords = [
-            "назван",
-            "наимен",
-            "имя",
-            "name",
-            "title",
-            "компан",
-            "организац",
-            "предприят",
-            "фирм",
-            "company",
-            "organization",
-            "firm",
-        ]
-
-        for i, col in enumerate(columns):
-            for keyword in name_keywords:
-                if keyword in col:
-                    return df.columns[i]
-
-        return None
+        """Поиск колонки с названиями"""
+        name_keywords = ['name', 'название', 'наименование', 'title', 'company', 'компания', 'тт']
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in name_keywords):
+                return col
+        
+        # Если не найдено, возвращаем первую колонку
+        return df.columns[0] if len(df.columns) > 0 else None
 
     def find_address_column(self, df: pd.DataFrame) -> Optional[str]:
-        columns = [col.lower() for col in df.columns]
-
-        address_keywords = ["адрес", "address", "местоположен", "location"]
-
-        for i, col in enumerate(columns):
-            for keyword in address_keywords:
-                if keyword in col:
-                    return df.columns[i]
-
+        """Поиск колонки с адресами"""
+        address_keywords = ['address', 'адрес', 'location', 'место', 'расположение']
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in address_keywords):
+                return col
+        
         return None

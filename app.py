@@ -81,7 +81,7 @@ class DuplicateDetectorApp:
                     True,
                 )
 
-                report = f"🔍 **Duplicate search results:**\n\n"
+                report = f"🔍 **Duplicate search results (Committee Algorithm):**\n\n"
                 report += f"- Total records: **{self.stats['total_records']}**\n"
                 report += (
                     f"- Duplicate groups found: **{self.stats['duplicate_groups']}**\n"
@@ -90,9 +90,13 @@ class DuplicateDetectorApp:
                     f"- Duplicate records: **{self.stats['duplicate_records']}**\n"
                 )
                 report += f"- Unique records: **{self.stats['unique_records']}**\n\n"
-                report += f"💡 **Duplicates grouped and color-highlighted**\n"
-                report += f"⚙️ Method: **Enhanced algorithm with address verification (75%)**\n"
-                report += f"🔬 **Smart algorithm** - considers house numbers, flexible similarity requirements"
+                report += f"💡 **Committee-based duplicate detection with 4 judges:**\n"
+                report += f"👨‍⚖️ **Judge 1**: Strict Control (Name + Address similarity)\n"
+                report += f"🗺️ **Judge 2**: Geo-Analyst (Location-focused)\n"
+                report += f"🏷️ **Judge 3**: Brand Analyzer (Brand name matching)\n"
+                report += f"⚖️ **Judge 4**: Integrator (Weighted scoring)\n\n"
+                report += f"🗳️ **Decision**: Minimum 2 votes required for duplicate classification\n"
+                report += f"🔬 **Advanced fuzzy matching** with TheFuzz library"
 
                 return styled_data, report
             else:
@@ -101,7 +105,7 @@ class DuplicateDetectorApp:
                         "data": self.current_df.values.tolist(),
                         "headers": self.current_df.columns.tolist(),
                     },
-                    f"✅ **No duplicates found!**\n\nAll {len(self.current_df)} records are unique using enhanced algorithm (75%)",
+                    f"✅ **No duplicates found!**\n\nAll {len(self.current_df)} records are unique using committee-based algorithm (4 judges, min 2 votes)",
                 )
 
         except Exception as e:
