@@ -29,12 +29,14 @@ class DuplicateDetectorApp:
             
             if not name_col:
                 return None, "❌ Не найдена колонка с названиями. Убедитесь, что в файле есть колонка содержащая 'название', 'наименование' или 'имя'"
+
+            if not address_col:
+                return None, "❌ Не найдена колонка с адресами. Убедитесь, что в файле есть колонка содержащая 'адрес', 'address' или 'address'"
             
             info = f"✅ **Файл загружен успешно!**\n\n"
             info += f"- Всего записей: **{len(self.current_df)}**\n"
             info += f"- Колонка названий: **{name_col}**\n"
-            info += f"- Колонка адресов: **{address_col if address_col else 'не найдена'}**\n"
-            info += f"- Точность поиска: **90%**\n\n"
+            info += f"- Колонка адресов: **{address_col if address_col else 'не найдена'}**\n\n"
             info += "🔍 Нажмите **'Найти дубликаты'** для начала проверки"
             
             return (
@@ -98,9 +100,9 @@ class DuplicateDetectorApp:
         except Exception as e:
             return None, f"❌ **Ошибка поиска дубликатов**: {str(e)}"
 
-    def download_results(self) -> Optional[str]:
+    def download_results(self):
         if self.current_df is None or self.duplicate_groups is None:
-            return None
+            return
         
         try:
             grouped_df = self.detector.create_grouped_dataframe(self.current_df, self.duplicate_groups)
@@ -108,11 +110,10 @@ class DuplicateDetectorApp:
             output_file = "duplicates_result.xlsx"
             grouped_df.to_excel(output_file, index=False)
             
-            return output_file
+            print(f"✅ Файл сохранен: {output_file}")
         
         except Exception as e:
-            print(f"Error saving file: {e}")
-            return None
+            print(f"❌ Ошибка сохранения файла: {e}")
 
     def create_interface(self):
         with gr.Blocks(
@@ -191,7 +192,7 @@ class DuplicateDetectorApp:
             download_btn.click(
                 fn=self.download_results,
                 inputs=[],
-                outputs=[gr.File(visible=True)]
+                outputs=[]
             )
             
         return app
