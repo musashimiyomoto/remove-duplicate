@@ -6,7 +6,7 @@ from typing import List, Dict, Tuple, Optional
 import colorsys
 
 class DuplicateDetector:
-    def __init__(self, similarity_threshold: int = 85):
+    def __init__(self, similarity_threshold: int = 90):
         self.similarity_threshold = similarity_threshold
         
         self.common_words = {
@@ -241,4 +241,35 @@ class DuplicateDetector:
             "metadata": {
                 "styling": styling,
             },
-        } 
+        }
+
+    def find_name_column(self, df: pd.DataFrame) -> Optional[str]:
+        """Автоматически находит колонку с названиями/наименованиями"""
+        columns = [col.lower() for col in df.columns]
+        
+        # Приоритетные ключевые слова для поиска колонки с названиями
+        name_keywords = [
+            'назван', 'наимен', 'имя', 'name', 'title', 'компан', 'организац', 
+            'предприят', 'фирм', 'company', 'organization', 'firm'
+        ]
+        
+        for i, col in enumerate(columns):
+            for keyword in name_keywords:
+                if keyword in col:
+                    return df.columns[i]
+        
+        return None
+    
+    def find_address_column(self, df: pd.DataFrame) -> Optional[str]:
+        """Автоматически находит колонку с адресами"""
+        columns = [col.lower() for col in df.columns]
+        
+        # Ключевые слова для поиска колонки с адресами
+        address_keywords = ['адрес', 'address', 'местоположен', 'location']
+        
+        for i, col in enumerate(columns):
+            for keyword in address_keywords:
+                if keyword in col:
+                    return df.columns[i]
+        
+        return None 
