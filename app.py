@@ -104,7 +104,7 @@ class DuplicateDetectorApp:
 
     def download_results(self):
         if self.current_df is None or self.duplicate_groups is None:
-            return
+            return None, "❌ No data to download"
 
         try:
             grouped_df = self.detector.create_grouped_dataframe(
@@ -115,12 +115,31 @@ class DuplicateDetectorApp:
             grouped_df.to_excel(output_file, index=False)
 
             print(f"✅ File saved: {output_file}")
-            return f"✅ Results saved to {output_file}"
+            return output_file, f"✅ Click the download link below to get your file"
 
         except Exception as e:
             error_msg = f"❌ File saving error: {e}"
             print(error_msg)
-            return error_msg
+            return None, error_msg
+
+    def download_results_for_download(self):
+        if self.current_df is None or self.duplicate_groups is None:
+            return None
+
+        try:
+            grouped_df = self.detector.create_grouped_dataframe(
+                self.current_df, self.duplicate_groups
+            )
+
+            output_file = "duplicates_result.xlsx"
+            grouped_df.to_excel(output_file, index=False)
+
+            print(f"✅ File will be downloaded: {output_file}")
+            return output_file
+
+        except Exception as e:
+            print(f"❌ File saving error: {e}")
+            return None
 
     def create_interface(self):
         with gr.Blocks(
@@ -165,7 +184,7 @@ class DuplicateDetectorApp:
                 find_btn = gr.Button(
                     "🔍 Find Duplicates", variant="primary", size="lg", scale=1
                 )
-                download_btn = gr.Button(
+                download_btn = gr.DownloadButton(
                     "💾 Download Results",
                     variant="secondary",
                     size="lg",
@@ -177,8 +196,6 @@ class DuplicateDetectorApp:
                 label="📊 Results", interactive=False, wrap=True, max_height=600
             )
 
-            download_status = gr.Markdown("", visible=False)
-
             file_input.upload(
                 fn=self.load_excel_file,
                 inputs=[file_input],
@@ -186,19 +203,15 @@ class DuplicateDetectorApp:
             )
 
             find_btn.click(
-                fn=lambda: (*self.find_duplicates(), gr.update(visible=True), gr.update(visible=False)),
+                fn=lambda: (*self.find_duplicates(), gr.update(visible=True)),
                 inputs=[],
-                outputs=[results_table, file_info, download_btn, download_status],
+                outputs=[results_table, file_info, download_btn],
             )
 
             download_btn.click(
-                fn=lambda: (self.download_results(), gr.update(visible=True)),
+                fn=self.download_results_for_download,
                 inputs=[], 
-                outputs=[download_status, download_status]
-            ).then(
-                fn=lambda x: gr.update(visible=True),
-                inputs=[download_status],
-                outputs=[download_status]
+                outputs=[download_btn]
             )
 
         return app
@@ -208,7 +221,7 @@ def main():
     app = DuplicateDetectorApp()
     interface = app.create_interface()
     interface.launch(
-        share=True, server_name="0.0.0.0", server_port=7860, show_api=False
+        share=False, server_name="0.0.0.0", server_port=7860, show_api=False
     )
 
 
