@@ -6,7 +6,6 @@ from collections import Counter
 import colorsys
 from typing import List, Dict, Tuple, Optional
 import warnings
-import nltk
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
