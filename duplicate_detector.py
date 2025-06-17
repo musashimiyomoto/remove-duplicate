@@ -307,37 +307,6 @@ class DuplicateDetector:
         
         return grouped_df
 
-    def create_styled_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]], is_dark_theme: bool = False) -> Dict:
-        """Создание стилизованного DataFrame для отображения в интерфейсе"""
-        if not duplicate_groups:
-            return {
-                "data": df.values.tolist(),
-                "headers": df.columns.tolist(),
-            }
-        
-        colors = self.generate_colors(len(duplicate_groups), is_dark_theme)
-        
-        # Создаём карту цветов для каждой строки
-        row_colors = [''] * len(df)
-        for i, group in enumerate(duplicate_groups):
-            for idx in group:
-                if idx < len(df):
-                    row_colors[idx] = colors[i % len(colors)]
-        
-        # Подготавливаем данные с цветовой разметкой
-        styled_data = []
-        for i, row in enumerate(df.values.tolist()):
-            if row_colors[i]:
-                styled_row = [f"<div style='background-color: {row_colors[i]}; padding: 5px;'>{cell}</div>" for cell in row]
-                styled_data.append(styled_row)
-            else:
-                styled_data.append(row)
-        
-        return {
-            "data": styled_data,
-            "headers": df.columns.tolist(),
-        }
-
     def find_name_column(self, df: pd.DataFrame) -> Optional[str]:
         """Поиск колонки с названиями"""
         name_keywords = ['name', 'название', 'наименование', 'title', 'company', 'компания', 'тт']
