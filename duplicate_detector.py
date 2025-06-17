@@ -224,14 +224,28 @@ class DuplicateDetector:
         results3 = self.get_duplicates_judge3_brand(df_work)
         results4 = self.get_duplicates_judge4_weighted(df_work)
 
+        # Отладочная информация
+        print(f"🔍 Результаты судей:")
+        print(f"   Судья 1 (Строгий): {len(results1)} пар")
+        print(f"   Судья 2 (Гео): {len(results2)} пар")
+        print(f"   Судья 3 (Бренд): {len(results3)} пар")
+        print(f"   Судья 4 (Взвешенный): {len(results4)} пар")
+
         # Подсчёт голосов
         all_votes = Counter(results1)
         all_votes.update(results2)
         all_votes.update(results3)
         all_votes.update(results4)
 
+        # Анализ голосования
+        vote_distribution = Counter(all_votes.values())
+        print(f"📊 Распределение голосов:")
+        for votes, count in sorted(vote_distribution.items()):
+            print(f"   {votes} голос(ов): {count} пар")
+
         # Найдём пары, набравшие достаточное количество голосов
         final_duplicate_pairs = [list(pair) for pair, count in all_votes.items() if count >= min_votes]
+        print(f"✅ Финальных пар дубликатов: {len(final_duplicate_pairs)} (мин. голосов: {min_votes})")
 
         # Группировка с использованием NetworkX
         G = nx.Graph()
@@ -269,34 +283,22 @@ class DuplicateDetector:
         """Создание DataFrame с группировкой дубликатов"""
         grouped_df = df.copy()
         
-        # Создаём колонку Id, если её нет
-        if 'Id' not in grouped_df.columns:
-            grouped_df['Id'] = range(len(grouped_df))
+        # Добавляем колонку для группировки дубликатов
+        grouped_df['Id уникальной тт 2'] = ''
         
-        # Для каждой группы дубликатов находим минимальный Id и присваиваем его всем записям группы
-        for group in duplicate_groups:
+        # Для каждой группы дубликатов присваиваем минимальный ID из группы
+        for group_num, group in enumerate(duplicate_groups, 1):
             if len(group) > 1:  # Проверяем, что это действительно группа дубликатов
-                # Получаем Id всех записей в группе
-                group_ids = []
+                # Находим минимальный ID в группе
+                min_id = min(group)
                 for idx in group:
                     if idx < len(grouped_df):
-                        group_ids.append(grouped_df.iloc[idx]['Id'])
-                
-                # Находим минимальный Id в группе
-                if group_ids:
-                    min_id = min(group_ids)
-                    
-                    # Присваиваем минимальный Id всем записям в группе, кроме одной (уникальной)
-                    # Оставляем одну запись с оригинальным Id, остальные получают минимальный Id
-                    first_record = True
-                    for idx in group:
-                        if idx < len(grouped_df):
-                            if not first_record:  # Не первая запись в группе
-                                grouped_df.iloc[idx, grouped_df.columns.get_loc('Id')] = min_id
-                            first_record = False
+                        grouped_df.iloc[idx, grouped_df.columns.get_loc('Id уникальной тт 2')] = min_id
         
-        # Сортировка: сначала записи с дубликатами (минимальные Id), потом уникальные
-        grouped_df = grouped_df.sort_values('Id')
+        # Сортировка: сначала записи с дубликатами, потом уникальные
+        grouped_df['_sort_key'] = grouped_df['Id уникальной тт 2'].apply(lambda x: 0 if x else 1)
+        grouped_df = grouped_df.sort_values(['_sort_key', 'Id уникальной тт 2'])
+        grouped_df = grouped_df.drop('_sort_key', axis=1)
         
         return grouped_df
 

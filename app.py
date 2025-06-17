@@ -87,7 +87,15 @@ class DuplicateDetectorApp:
                     "headers": grouped_df.columns.tolist(),
                 }
 
-                report = ""
+                # Создаем отчет
+                report = f"✅ **Поиск дубликатов завершен!**\n\n"
+                report += f"📊 **Статистика:**\n"
+                report += f"- Всего записей: **{self.stats['total_records']}**\n"
+                report += f"- Найдено групп дубликатов: **{self.stats['duplicate_groups']}**\n"
+                report += f"- Записей-дубликатов: **{self.stats['duplicate_records']}**\n"
+                report += f"- Уникальных записей: **{self.stats['unique_records']}**\n\n"
+                report += f"🔍 Используется алгоритм консилиума из 4 судей (минимум 2 голоса)\n\n"
+                report += f"💾 Результаты готовы для скачивания"
 
                 return grouped_data, report
             else:
@@ -101,26 +109,6 @@ class DuplicateDetectorApp:
 
         except Exception as e:
             return None, f"❌ **Duplicate search error**: {str(e)}"
-
-    def download_results(self):
-        if self.current_df is None or self.duplicate_groups is None:
-            return None, "❌ No data to download"
-
-        try:
-            grouped_df = self.detector.create_grouped_dataframe(
-                self.current_df, self.duplicate_groups
-            )
-
-            output_file = "duplicates_result.xlsx"
-            grouped_df.to_excel(output_file, index=False)
-
-            print(f"✅ File saved: {output_file}")
-            return output_file, f"✅ Click the download link below to get your file"
-
-        except Exception as e:
-            error_msg = f"❌ File saving error: {e}"
-            print(error_msg)
-            return None, error_msg
 
     def download_results_for_download(self):
         if self.current_df is None or self.duplicate_groups is None:
