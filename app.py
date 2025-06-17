@@ -70,15 +70,28 @@ class DuplicateDetectorApp:
             if not name_col:
                 return None, "❌ Name column not found"
 
-            self.duplicate_groups, self.stats = self.detector.find_duplicates(
-                df=self.current_df, name_column=name_col, address_column=address_col
-            )
+            # Попытаемся найти колонку с ID
+            id_col = None
+            id_keywords = ['Id', 'id', 'айди', 'ид', 'номер', 'number']
+            for col in self.current_df.columns:
+                col_lower = col.lower()
+                if any(keyword in col_lower for keyword in id_keywords):
+                    id_col = col
+                    break
 
-            if self.duplicate_groups:
+            self.duplicate_groups, self.stats = self.detector.find_duplicates(
+                df=self.current_df, name_column=name_col, address_column=address_col, id_column=id_col
+            )
+            print(f"🔍 Найденные группы дубликатов: {self.duplicate_groups}")
+            print(f"🔍 Количество групп: {len(self.duplicate_groups) if self.duplicate_groups else 0}")
+            print(f"🔍 Статистика: {self.stats}")
+
+            if self.duplicate_groups and len(self.duplicate_groups) > 0:
                 # Создаем группированный DataFrame с колонкой группировки
                 grouped_df = self.detector.create_grouped_dataframe(
                     self.current_df,
-                    self.duplicate_groups
+                    self.duplicate_groups,
+                    id_col
                 )
 
                 # Преобразуем в формат для отображения
@@ -115,8 +128,17 @@ class DuplicateDetectorApp:
             return None
 
         try:
+            # Попытаемся найти колонку с ID
+            id_col = None
+            id_keywords = ['Id', 'id', 'айди', 'ид', 'номер', 'number']
+            for col in self.current_df.columns:
+                col_lower = col.lower()
+                if any(keyword in col_lower for keyword in id_keywords):
+                    id_col = col
+                    break
+
             grouped_df = self.detector.create_grouped_dataframe(
-                self.current_df, self.duplicate_groups
+                self.current_df, self.duplicate_groups, id_col
             )
 
             output_file = "duplicates_result.xlsx"
