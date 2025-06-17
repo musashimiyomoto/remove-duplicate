@@ -4,6 +4,7 @@ from duplicate_detector import DuplicateDetector
 from typing import Tuple, Optional, Dict, Any
 import io
 
+
 class DuplicateDetectorApp:
     def __init__(self):
         self.detector = DuplicateDetector()
@@ -13,81 +14,91 @@ class DuplicateDetectorApp:
 
     def load_excel_file(self, file) -> Tuple[Optional[Dict], str]:
         if file is None:
-            return None, "Пожалуйста, загрузите Excel файл"
-        
+            return None, "Please upload an Excel file"
+
         try:
             self.current_df = pd.read_excel(file.name)
-            
+
             # Удаляем безымянные колонки
-            unnamed_cols = [col for col in self.current_df.columns if col.startswith('Unnamed')]
+            unnamed_cols = [
+                col for col in self.current_df.columns if col.startswith("Unnamed")
+            ]
             if unnamed_cols:
                 self.current_df = self.current_df.drop(columns=unnamed_cols)
-            
+
             # Автоматически находим нужные колонки
             name_col = self.detector.find_name_column(self.current_df)
             address_col = self.detector.find_address_column(self.current_df)
-            
+
             if not name_col:
-                return None, "❌ Не найдена колонка с названиями. Убедитесь, что в файле есть колонка содержащая 'название', 'наименование' или 'имя'"
+                return (
+                    None,
+                    "❌ Name column not found. Make sure the file has a column containing 'name', 'title', or 'company'",
+                )
 
             if not address_col:
-                return None, "❌ Не найдена колонка с адресами. Убедитесь, что в файле есть колонка содержащая 'адрес', 'address' или 'address'"
-            
-            info = f"✅ **Файл загружен успешно!**\n\n"
-            info += f"- Всего записей: **{len(self.current_df)}**\n"
-            info += f"- Колонка названий: **{name_col}**\n"
-            info += f"- Колонка адресов: **{address_col if address_col else 'не найдена'}**\n\n"
-            info += "🔍 Нажмите **'Найти дубликаты'** для начала проверки"
-            
+                return (
+                    None,
+                    "❌ Address column not found. Make sure the file has a column containing 'address' or 'location'",
+                )
+
+            info = f"✅ **File loaded successfully!**\n\n"
+            info += f"- Total records: **{len(self.current_df)}**\n"
+            info += f"- Name column: **{name_col}**\n"
+            info += f"- Address column: **{address_col if address_col else 'not found'}**\n\n"
+            info += "🔍 Click **'Find Duplicates'** to start checking"
+
             return (
                 {
                     "data": self.current_df.values.tolist(),
                     "headers": self.current_df.columns.tolist(),
                 },
-                info
+                info,
             )
-        
+
         except Exception as e:
-            error_msg = f"❌ **Ошибка загрузки файла**: {str(e)}"
+            error_msg = f"❌ **File loading error**: {str(e)}"
             return None, error_msg
 
     def find_duplicates(self) -> Tuple[Optional[Dict], str]:
         if self.current_df is None:
-            return None, "❌ Сначала загрузите Excel файл"
-        
+            return None, "❌ Please upload an Excel file first"
+
         try:
             # Фиксированная точность 75% (для улучшенного метода)
             self.detector.similarity_threshold = 0.75
-            
+
             # Автоматически находим нужные колонки
             name_col = self.detector.find_name_column(self.current_df)
             address_col = self.detector.find_address_column(self.current_df)
-            
+
             if not name_col:
-                return None, "❌ Не найдена колонка с названиями"
-            
+                return None, "❌ Name column not found"
+
             self.duplicate_groups, self.stats = self.detector.find_duplicates(
-                df=self.current_df,
-                name_column=name_col,
-                address_column=address_col
+                df=self.current_df, name_column=name_col, address_column=address_col
             )
-            
+
             if self.duplicate_groups:
                 styled_data = self.detector.create_styled_dataframe(
-                    self.current_df, 
+                    self.current_df,
                     self.duplicate_groups,
-                    True  # используем темную тему для лучшей видимости
+                    True,  # используем темную тему для лучшей видимости
                 )
-                
-                report = f"🔍 **Результаты поиска дубликатов:**\n\n"
-                report += f"- Всего записей: **{self.stats['total_records']}**\n"
-                report += f"- Найдено групп дубликатов: **{self.stats['duplicate_groups']}**\n"
-                report += f"- Записей-дубликатов: **{self.stats['duplicate_records']}**\n"
-                report += f"- Уникальных записей: **{self.stats['unique_records']}**\n\n"
-                report += f"💡 **Дубликаты сгруппированы и выделены цветом**\n"
-                report += f"⚙️ Метод: **Улучшенный алгоритм с проверкой адресов (75%)**\n"
-                report += f"🔬 **Умный алгоритм** - учет номеров домов, гибкие требования к схожести"
-                
+
+                report = f"🔍 **Duplicate search results:**\n\n"
+                report += f"- Total records: **{self.stats['total_records']}**\n"
+                report += (
+                    f"- Duplicate groups found: **{self.stats['duplicate_groups']}**\n"
+                )
+                report += (
+                    f"- Duplicate records: **{self.stats['duplicate_records']}**\n"
+                )
+                report += f"- Unique records: **{self.stats['unique_records']}**\n\n"
+                report += f"💡 **Duplicates grouped and color-highlighted**\n"
+                report += f"⚙️ Method: **Enhanced algorithm with address verification (75%)**\n"
+                report += f"🔬 **Smart algorithm** - considers house numbers, flexible similarity requirements"
+
                 return styled_data, report
             else:
                 return (
@@ -95,30 +106,32 @@ class DuplicateDetectorApp:
                         "data": self.current_df.values.tolist(),
                         "headers": self.current_df.columns.tolist(),
                     },
-                    f"✅ **Дубликаты не найдены!**\n\nВсе {len(self.current_df)} записей уникальны при использовании улучшенного алгоритма (75%)"
+                    f"✅ **No duplicates found!**\n\nAll {len(self.current_df)} records are unique using enhanced algorithm (75%)",
                 )
-        
+
         except Exception as e:
-            return None, f"❌ **Ошибка поиска дубликатов**: {str(e)}"
+            return None, f"❌ **Duplicate search error**: {str(e)}"
 
     def download_results(self):
         if self.current_df is None or self.duplicate_groups is None:
             return
-        
+
         try:
-            grouped_df = self.detector.create_grouped_dataframe(self.current_df, self.duplicate_groups)
-            
+            grouped_df = self.detector.create_grouped_dataframe(
+                self.current_df, self.duplicate_groups
+            )
+
             output_file = "duplicates_result.xlsx"
             grouped_df.to_excel(output_file, index=False)
-            
-            print(f"✅ Файл сохранен: {output_file}")
-        
+
+            print(f"✅ File saved: {output_file}")
+
         except Exception as e:
-            print(f"❌ Ошибка сохранения файла: {e}")
+            print(f"❌ File saving error: {e}")
 
     def create_interface(self):
         with gr.Blocks(
-            title="🔍 Поиск дубликатов в Excel",
+            title="🔍 Excel Duplicate Finder",
             theme=gr.themes.Soft(),
             css="""
             .main-header {
@@ -135,78 +148,66 @@ class DuplicateDetectorApp:
                 justify-content: center;
                 margin: 1rem 0;
             }
-            """
+            """,
         ) as app:
-            
-            gr.HTML("""
+
+            gr.HTML(
+                """
             <div class="main-header">
-                <h1>🔍 Поиск дубликатов в Excel</h1>
-                <p>Загрузите Excel файл и найдите дубликаты по названиям и адресам</p>
+                <h1>🔍 Excel Duplicate Finder</h1>
+                <p>Upload an Excel file and find duplicates by names and addresses</p>
             </div>
-            """)
-            
-            # Упрощенный интерфейс - только загрузка файла и кнопки
-            file_input = gr.File(
-                label="📁 Загрузить Excel файл",
-                file_types=[".xlsx", ".xls"],
-                file_count="single"
+            """
             )
-            
-            file_info = gr.Markdown("Файл не загружен")
-            
+
+            file_input = gr.File(
+                label="📁 Upload Excel file",
+                file_types=[".xlsx", ".xls"],
+                file_count="single",
+            )
+
+            file_info = gr.Markdown("File not loaded")
+
             with gr.Row():
                 find_btn = gr.Button(
-                    "🔍 Найти дубликаты", 
-                    variant="primary",
-                    size="lg",
-                    scale=1
+                    "🔍 Find Duplicates", variant="primary", size="lg", scale=1
                 )
                 download_btn = gr.Button(
-                    "💾 Скачать результат",
+                    "💾 Download Results",
                     variant="secondary",
                     size="lg",
                     visible=False,
-                    scale=1
+                    scale=1,
                 )
-            
-            # Таблица с результатами внизу
+
             results_table = gr.DataFrame(
-                label="📊 Результаты",
-                interactive=False,
-                wrap=True,
-                max_height=600
+                label="📊 Results", interactive=False, wrap=True, max_height=600
             )
-            
-            # Обработчики событий
+
             file_input.upload(
                 fn=self.load_excel_file,
                 inputs=[file_input],
-                outputs=[results_table, file_info]
+                outputs=[results_table, file_info],
             )
-            
+
             find_btn.click(
                 fn=lambda: (*self.find_duplicates(), gr.update(visible=True)),
                 inputs=[],
-                outputs=[results_table, file_info, download_btn]
+                outputs=[results_table, file_info, download_btn],
             )
-            
-            download_btn.click(
-                fn=self.download_results,
-                inputs=[],
-                outputs=[]
-            )
-            
+
+            download_btn.click(fn=self.download_results, inputs=[], outputs=[])
+
         return app
+
 
 def main():
     app = DuplicateDetectorApp()
     interface = app.create_interface()
     interface.launch(
-        share=False,
-        server_name="0.0.0.0",
-        server_port=7860,
-        show_api=False
+        share=False, server_name="0.0.0.0", server_port=7860, show_api=False
     )
 
+
 if __name__ == "__main__":
-    main() 
+    main()

@@ -1,125 +1,125 @@
-# 🔍 Детектор дубликатов для Excel файлов
+# 🔍 Excel Duplicate Detector
 
-Веб-приложение для поиска дубликатов в Excel файлах с использованием современных методов машинного обучения.
+Web application for finding duplicates in Excel files using modern machine learning methods.
 
-## ✨ Особенности
+## ✨ Features
 
-- **Векторизация текста** с использованием TF-IDF
-- **Косинусное расстояние** для определения схожести  
-- **Предобработка текста**: стемминг, удаление стоп-слов, нормализация
-- **Интуитивный интерфейс** на базе Gradio
-- **Цветовая группировка** найденных дубликатов
-- **Экспорт результатов** в Excel
+- **Text vectorization** using TF-IDF
+- **Cosine distance** for similarity determination
+- **Text preprocessing**: stemming, stop word removal, normalization
+- **Intuitive interface** based on Gradio
+- **Color grouping** of found duplicates
+- **Export results** to Excel
 
-## 🚀 Установка
+## 🚀 Installation
 
-1. Установите зависимости:
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Инициализируйте NLTK данные:
+2. Initialize NLTK data:
 ```bash
 python setup_nltk.py
 ```
 
-3. Запустите приложение:
+3. Run the application:
 ```bash
 python app.py
 ```
 
-## 🔬 Как работает алгоритм
+## 🔬 How the Algorithm Works
 
-### Старый метод (проблемы)
-- Использовал нечеткое сравнение строк (fuzzy matching)
-- Много ложных срабатываний
-- Простое сравнение символов
+### Old Method (Problems)
+- Used fuzzy string matching
+- Many false positives
+- Simple character comparison
 
-### Новый метод (улучшенный)
-1. **Предобработка текста**:
-   - Удаление стоп-слов и пунктуации
-   - Стемминг (приведение к корню)
-   - Нормализация организационно-правовых форм
-   - Транслитерация
+### New Method (Enhanced)
+1. **Text Preprocessing**:
+   - Stop word and punctuation removal
+   - Stemming (root reduction)
+   - Organizational form normalization
+   - Transliteration
 
-2. **Векторизация**:
-   - TF-IDF векторизация
-   - N-граммы (1-2 слова)
-   - Учет важности слов
+2. **Vectorization**:
+   - TF-IDF vectorization
+   - N-grams (1-2 words)
+   - Word importance consideration
 
-3. **Определение схожести**:
-   - Косинусное расстояние между векторами
-   - Порог схожести: 85%
-   - Математически обоснованный подход
+3. **Similarity Determination**:
+   - Cosine distance between vectors
+   - Similarity threshold: 85%
+   - Mathematically justified approach
 
-## 📊 Примеры работы
+## 📊 Usage Examples
 
-### До улучшения:
-- "ООО Рога и Копыта" ≈ "ИП Рогов" (ложное срабатывание)
-- "Кофейня на углу" ≈ "Магазин на углу" (ложное срабатывание)
+### Before Enhancement:
+- "LLC Horns and Hooves" ≈ "IP Rogov" (false positive)
+- "Corner Coffee Shop" ≈ "Corner Store" (false positive)
 
-### После улучшения:
-- "ООО Рога и Копыта" ≈ "Рога и Копыта ООО" (правильно найдено)
-- "Кафе Пушкин" ≈ "Кафе А.С. Пушкина" (правильно найдено)
+### After Enhancement:
+- "LLC Horns and Hooves" ≈ "Horns and Hooves LLC" (correctly found)
+- "Pushkin Cafe" ≈ "A.S. Pushkin Cafe" (correctly found)
 
-## 🎯 Использование
+## 🎯 Usage
 
-1. Загрузите Excel файл с данными
-2. Программа автоматически найдет колонки с названиями и адресами
-3. Нажмите "Найти дубликаты"
-4. Просмотрите результаты с цветовой группировкой
-5. Скачайте результат в Excel
+1. Upload Excel file with data
+2. Program automatically finds name and address columns
+3. Click "Find Duplicates"
+4. View results with color grouping
+5. Download result to Excel
 
-## 🛠 Технические детали
+## 🛠 Technical Details
 
-- **Язык**: Python 3.10+
-- **ML библиотеки**: scikit-learn, NLTK
-- **Web-интерфейс**: Gradio
-- **Обработка данных**: pandas, numpy
+- **Language**: Python 3.10+
+- **ML Libraries**: scikit-learn, NLTK
+- **Web Interface**: Gradio
+- **Data Processing**: pandas, numpy
 
-## 📋 Требования к данным
+## 📋 Data Requirements
 
-- Формат файла: Excel (.xlsx, .xls)
-- Колонка с названиями должна содержать: "название", "наименование", "имя", "name"
-- Колонка с адресами должна содержать: "адрес", "address", "местоположение"
+- File format: Excel (.xlsx, .xls)
+- Name column should contain: "name", "title", "company"
+- Address column should contain: "address", "location"
 
-## ⚙️ Настройки
+## ⚙️ Settings
 
-Для изменения порога схожести отредактируйте `similarity_threshold` в классе `DuplicateDetector`:
+To change similarity threshold, edit `similarity_threshold` in the `DuplicateDetector` class:
 
 ```python
-# В файле duplicate_detector.py
-def __init__(self, similarity_threshold: float = 0.85):  # Измените здесь
+# In duplicate_detector.py file
+def __init__(self, similarity_threshold: float = 0.85):  # Change here
 ```
 
-- 0.9-1.0: Очень строгое сравнение (меньше дубликатов)
-- 0.8-0.9: Сбалансированное сравнение (рекомендуется)
-- 0.6-0.8: Мягкое сравнение (больше дубликатов)
+- 0.9-1.0: Very strict comparison (fewer duplicates)
+- 0.8-0.9: Balanced comparison (recommended)
+- 0.6-0.8: Soft comparison (more duplicates)
 
-## 🐛 Устранение неполадок
+## 🐛 Troubleshooting
 
-### Ошибка "NLTK data not found"
+### "NLTK data not found" Error
 ```bash
 python setup_nltk.py
 ```
 
-### Медленная работа на больших файлах
-- Используйте файлы до 10,000 записей
-- Увеличьте порог схожести до 0.9
+### Slow performance on large files
+- Use files up to 10,000 records
+- Increase similarity threshold to 0.9
 
-## 📈 Производительность
+## 📈 Performance
 
-- **Скорость**: ~1000 записей за 10-15 секунд
-- **Точность**: ~90-95% правильных определений
-- **Память**: ~50MB для 1000 записей
+- **Speed**: ~1000 records in 10-15 seconds
+- **Accuracy**: ~90-95% correct identifications
+- **Memory**: ~50MB for 1000 records
 
-## 🤝 Вклад в проект
+## 🤝 Contributing
 
-1. Форкните репозиторий
-2. Создайте ветку для новой функции
-3. Внесите изменения
-4. Создайте Pull Request
+1. Fork the repository
+2. Create a feature branch
+3. Make changes
+4. Create a Pull Request
 
-## 📄 Лицензия
+## 📄 License
 
 MIT License 
