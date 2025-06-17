@@ -75,11 +75,17 @@ class DuplicateDetectorApp:
             )
 
             if self.duplicate_groups:
-                styled_data = self.detector.create_styled_dataframe(
+                # Создаем группированный DataFrame с колонкой группировки
+                grouped_df = self.detector.create_grouped_dataframe(
                     self.current_df,
-                    self.duplicate_groups,
-                    True,
+                    self.duplicate_groups
                 )
+
+                # Преобразуем в формат для отображения
+                grouped_data = {
+                    "data": grouped_df.values.tolist(),
+                    "headers": grouped_df.columns.tolist(),
+                }
 
                 report = f"🔍 **Duplicate search results (Committee Algorithm):**\n\n"
                 report += f"- Total records: **{self.stats['total_records']}**\n"
@@ -96,9 +102,10 @@ class DuplicateDetectorApp:
                 report += f"🏷️ **Judge 3**: Brand Analyzer (Brand name matching)\n"
                 report += f"⚖️ **Judge 4**: Integrator (Weighted scoring)\n\n"
                 report += f"🗳️ **Decision**: Minimum 2 votes required for duplicate classification\n"
-                report += f"🔬 **Advanced fuzzy matching** with TheFuzz library"
+                report += f"🔬 **Advanced fuzzy matching** with TheFuzz library\n\n"
+                report += f"📊 **Groups are sorted by duplicate status - duplicate groups first, then unique records**"
 
-                return styled_data, report
+                return grouped_data, report
             else:
                 return (
                     {
@@ -124,9 +131,12 @@ class DuplicateDetectorApp:
             grouped_df.to_excel(output_file, index=False)
 
             print(f"✅ File saved: {output_file}")
+            return f"✅ Results saved to {output_file}"
 
         except Exception as e:
-            print(f"❌ File saving error: {e}")
+            error_msg = f"❌ File saving error: {e}"
+            print(error_msg)
+            return error_msg
 
     def create_interface(self):
         with gr.Blocks(
@@ -183,6 +193,8 @@ class DuplicateDetectorApp:
                 label="📊 Results", interactive=False, wrap=True, max_height=600
             )
 
+            download_status = gr.Markdown("", visible=False)
+
             file_input.upload(
                 fn=self.load_excel_file,
                 inputs=[file_input],
@@ -190,12 +202,20 @@ class DuplicateDetectorApp:
             )
 
             find_btn.click(
-                fn=lambda: (*self.find_duplicates(), gr.update(visible=True)),
+                fn=lambda: (*self.find_duplicates(), gr.update(visible=True), gr.update(visible=False)),
                 inputs=[],
-                outputs=[results_table, file_info, download_btn],
+                outputs=[results_table, file_info, download_btn, download_status],
             )
 
-            download_btn.click(fn=self.download_results, inputs=[], outputs=[])
+            download_btn.click(
+                fn=lambda: (self.download_results(), gr.update(visible=True)),
+                inputs=[], 
+                outputs=[download_status, download_status]
+            ).then(
+                fn=lambda x: gr.update(visible=True),
+                inputs=[download_status],
+                outputs=[download_status]
+            )
 
         return app
 
