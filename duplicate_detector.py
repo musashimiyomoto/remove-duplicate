@@ -6,73 +6,28 @@ from typing import List, Dict, Tuple, Optional
 import colorsys
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import SnowballStemmer
+from difflib import SequenceMatcher
 import warnings
 warnings.filterwarnings('ignore')
 
 class DuplicateDetector:
-    def __init__(self, similarity_threshold: float = 0.85):
+    def __init__(self, similarity_threshold: float = 0.70):
         """
-        Детектор дубликатов на основе векторизации и косинусного расстояния
+        Детектор дубликатов с комбинацией нескольких методов
         
         Args:
-            similarity_threshold: порог схожести от 0 до 1 (по умолчанию 0.85)
+            similarity_threshold: порог схожести от 0 до 1 (по умолчанию 0.70)
         """
         self.similarity_threshold = similarity_threshold
         self.vectorizer = None
-        self.stemmer = SnowballStemmer('russian')
         
-        # Инициализация NLTK данных
-        self._init_nltk()
-        
-        # Регулярные выражения для нормализации текста
-        self.common_words = {
-            'org_forms': r'\b(ип|ооо|оао|зао|тов|ltd|llc|inc|corporation|corp|company|co)\b',
-            'venue_types': r'\b(кафе|ресторан|бар|столовая|магазин|торговая точка|тт|cafe|restaurant|bar|shop|store)\b',
-            'punctuation': r'[.,;:!?()"\'\-\№#@$%^&*+={}|\\`~<>/]',
+        # Регулярные выражения для базовой нормализации
+        self.patterns = {
             'extra_spaces': r'\s+',
-            'postal_codes': r'^\d{5,6},?\s*',
-            'numbers': r'\d+',
-            'address_abbreviations': {
-                r'\bг\b': 'город',
-                r'\bул\b': 'улица', 
-                r'\bпр\b': 'проспект',
-                r'\bд\b': 'дом',
-                r'\bстр\b': 'строение',
-                r'\bк\b': 'корпус',
-                r'\bобл\b': 'область',
-                r'\bр-н\b': 'район',
-                r'\bпос\b': 'поселок',
-                r'\bс\b': 'село',
-                r'\bдер\b': 'деревня',
-                r'\bпл\b': 'площадь',
-                r'\bпер\b': 'переулок',
-                r'\bш\b': 'шоссе',
-                r'\bнаб\b': 'набережная'
-            }
+            'punctuation': r'[^\w\s]',
+            'numbers_only': r'^\d+$',
+            'org_forms': r'\b(ооо|оао|зао|ип|тов|ltd|llc|inc|corp|co)\b',
         }
-        
-        # Русские стоп-слова
-        self.russian_stopwords = {
-            'и', 'в', 'на', 'с', 'по', 'за', 'от', 'до', 'для', 'при', 'о', 
-            'об', 'под', 'над', 'между', 'через', 'без', 'из', 'к', 'у', 'т',
-            'но', 'а', 'что', 'как', 'не', 'же', 'ли', 'бы', 'да', 'или'
-        }
-    
-    def _init_nltk(self):
-        """Инициализация NLTK данных"""
-        try:
-            nltk.data.find('tokenizers/punkt')
-        except LookupError:
-            nltk.download('punkt', quiet=True)
-        
-        try:
-            nltk.data.find('corpora/stopwords')
-        except LookupError:
-            nltk.download('stopwords', quiet=True)
 
     def generate_colors(self, num_colors: int, is_dark_theme: bool = False) -> List[str]:
         """Генерация цветов для групп дубликатов"""
@@ -92,149 +47,93 @@ class DuplicateDetector:
             colors.append(hex_color)
         return colors
 
-    def preprocess_text(self, text: str, remove_org_forms: bool = True, remove_venue_types: bool = True) -> str:
-        """
-        Предобработка текста для векторизации
-        
-        Args:
-            text: исходный текст
-            remove_org_forms: убирать ли организационно-правовые формы
-            remove_venue_types: убирать ли типы заведений
-            
-        Returns:
-            обработанный текст
-        """
+    def normalize_text(self, text: str) -> str:
+        """Базовая нормализация текста"""
         if pd.isna(text) or not text:
             return ""
         
         text = str(text).strip().lower()
         
-        # Удаляем пунктуацию
-        text = re.sub(self.common_words['punctuation'], ' ', text)
+        # Убираем лишние пробелы и пунктуацию
+        text = re.sub(self.patterns['punctuation'], ' ', text)
+        text = re.sub(self.patterns['extra_spaces'], ' ', text).strip()
         
-        # Удаляем организационно-правовые формы
-        if remove_org_forms:
-            text = re.sub(self.common_words['org_forms'], '', text)
+        return text
+
+    def normalize_text_strict(self, text: str) -> str:
+        """Строгая нормализация текста для более точного сравнения"""
+        if pd.isna(text) or not text:
+            return ""
         
-        # Удаляем типы заведений
-        if remove_venue_types:
-            text = re.sub(self.common_words['venue_types'], '', text)
+        text = str(text).strip().lower()
         
-        # Удаляем числа (номера домов, телефоны и т.д.)
-        text = re.sub(self.common_words['numbers'], '', text)
+        # Убираем организационные формы
+        text = re.sub(self.patterns['org_forms'], '', text, flags=re.IGNORECASE)
         
-        # Транслитерация
+        # Убираем пунктуацию и лишние пробелы
+        text = re.sub(self.patterns['punctuation'], ' ', text)
+        text = re.sub(self.patterns['extra_spaces'], ' ', text).strip()
+        
+        # Транслитерация для кириллицы
         try:
             text = unidecode(text)
         except:
             pass
         
-        # Токенизация
-        try:
-            tokens = word_tokenize(text, language='russian')
-        except:
-            tokens = text.split()
-        
-        # Убираем стоп-слова и короткие слова
-        tokens = [token for token in tokens 
-                 if len(token) > 2 and token not in self.russian_stopwords]
-        
-        # Стемминг
-        try:
-            tokens = [self.stemmer.stem(token) for token in tokens]
-        except:
-            pass
-        
-        # Убираем лишние пробелы
-        result = ' '.join(tokens)
-        result = re.sub(self.common_words['extra_spaces'], ' ', result).strip()
-        
-        return result
+        return text
 
-    def normalize_address(self, address: str) -> str:
-        """Нормализация адреса"""
-        if pd.isna(address) or not address:
-            return ""
-        
-        address = str(address).lower().strip()
-        
-        # Убираем почтовые коды
-        address = re.sub(self.common_words['postal_codes'], '', address)
-        
-        # Заменяем сокращения
-        for pattern, replacement in self.common_words['address_abbreviations'].items():
-            address = re.sub(pattern, replacement, address)
-        
-        # Убираем пунктуацию и номера
-        address = re.sub(r'[,.\-№]', ' ', address)
-        address = re.sub(self.common_words['numbers'], '', address)
-        
-        # Убираем лишние пробелы
-        address = re.sub(self.common_words['extra_spaces'], ' ', address).strip()
-        
-        return address
+    def string_similarity(self, str1: str, str2: str) -> float:
+        """Вычисление схожести строк через SequenceMatcher"""
+        if not str1 or not str2:
+            return 0.0
+        return SequenceMatcher(None, str1, str2).ratio()
 
-    def create_combined_features(self, df: pd.DataFrame, name_column: str, address_column: Optional[str] = None) -> List[str]:
-        """
-        Создание объединенных признаков для векторизации
+    def jaccard_similarity(self, str1: str, str2: str) -> float:
+        """Вычисление схожести Жаккара на основе слов"""
+        if not str1 or not str2:
+            return 0.0
         
-        Args:
-            df: DataFrame с данными
-            name_column: колонка с названиями
-            address_column: колонка с адресами (опционально)
-            
-        Returns:
-            список обработанных текстов для векторизации
-        """
-        combined_features = []
+        set1 = set(str1.split())
+        set2 = set(str2.split())
         
-        for idx, row in df.iterrows():
-            # Обрабатываем название
-            name_text = self.preprocess_text(row[name_column])
-            
-            # Обрабатываем адрес, если есть
-            address_text = ""
-            if address_column and address_column in df.columns:
-                address_text = self.normalize_address(row[address_column])
-            
-            # Объединяем название и адрес с весами
-            # Название важнее адреса, поэтому дублируем его
-            combined_text = f"{name_text} {name_text} {address_text}".strip()
-            combined_features.append(combined_text)
+        intersection = set1.intersection(set2)
+        union = set1.union(set2)
         
-        return combined_features
+        if not union:
+            return 0.0
+        
+        return len(intersection) / len(union)
 
-    def calculate_similarity_matrix(self, texts: List[str]) -> np.ndarray:
-        """
-        Вычисление матрицы схожести с использованием TF-IDF и косинусного расстояния
+    def calculate_combined_similarity(self, text1: str, text2: str) -> float:
+        """Комбинированное вычисление схожести"""
+        if not text1 or not text2:
+            return 0.0
         
-        Args:
-            texts: список текстов для сравнения
-            
-        Returns:
-            матрица схожести
-        """
-        # Создаем TF-IDF векторизатор
-        self.vectorizer = TfidfVectorizer(
-            max_features=10000,
-            ngram_range=(1, 2),  # используем униграммы и биграммы
-            min_df=1,
-            max_df=0.95,
-            lowercase=True,
-            analyzer='word'
-        )
+        # Базовая нормализация
+        norm1 = self.normalize_text(text1)
+        norm2 = self.normalize_text(text2)
         
-        # Векторизуем тексты
-        tfidf_matrix = self.vectorizer.fit_transform(texts)
+        # Строгая нормализация
+        strict1 = self.normalize_text_strict(text1)
+        strict2 = self.normalize_text_strict(text2)
         
-        # Вычисляем косинусное сходство
-        similarity_matrix = cosine_similarity(tfidf_matrix)
+        # Различные метрики схожести
+        basic_sim = self.string_similarity(norm1, norm2)
+        strict_sim = self.string_similarity(strict1, strict2)
+        jaccard_sim = self.jaccard_similarity(norm1, norm2)
         
-        return similarity_matrix
+        # Проверка на точное совпадение после нормализации
+        if strict1 == strict2 and len(strict1) > 2:
+            return 1.0
+        
+        # Комбинированная оценка с весами
+        combined_score = (basic_sim * 0.4 + strict_sim * 0.4 + jaccard_sim * 0.2)
+        
+        return combined_score
 
     def find_duplicates(self, df: pd.DataFrame, name_column: str, address_column: Optional[str] = None, id_column: Optional[str] = None) -> Tuple[List[List[int]], Dict]:
         """
-        Поиск дубликатов с использованием векторизации
+        Поиск дубликатов с использованием комбинированного алгоритма
         
         Args:
             df: DataFrame с данными
@@ -248,40 +147,47 @@ class DuplicateDetector:
         if df.empty:
             return [], {'total_records': 0, 'duplicate_groups': 0, 'duplicate_records': 0, 'unique_records': 0}
         
-        # Создаем объединенные признаки
-        combined_features = self.create_combined_features(df, name_column, address_column)
-        
-        # Фильтруем пустые тексты
-        valid_indices = [i for i, text in enumerate(combined_features) if text.strip()]
-        
-        if not valid_indices:
-            return [], {'total_records': len(df), 'duplicate_groups': 0, 'duplicate_records': 0, 'unique_records': len(df)}
-        
-        # Получаем только валидные тексты
-        valid_texts = [combined_features[i] for i in valid_indices]
-        
-        # Вычисляем матрицу схожести
-        similarity_matrix = self.calculate_similarity_matrix(valid_texts)
+        # Создаем комбинированные тексты для сравнения
+        combined_texts = []
+        for idx, row in df.iterrows():
+            name_text = str(row[name_column]) if pd.notna(row[name_column]) else ""
+            address_text = ""
+            
+            if address_column and address_column in df.columns and pd.notna(row[address_column]):
+                address_text = str(row[address_column])
+            
+            # Объединяем название и адрес
+            combined_text = f"{name_text} {address_text}".strip()
+            combined_texts.append(combined_text)
         
         # Находим группы дубликатов
         duplicate_groups = []
         processed_indices = set()
         
-        for i, original_idx in enumerate(valid_indices):
-            if original_idx in processed_indices:
+        for i in range(len(combined_texts)):
+            if i in processed_indices:
                 continue
-                
-            current_group = [original_idx]
             
-            for j, compare_idx in enumerate(valid_indices[i+1:], i+1):
-                if compare_idx in processed_indices:
+            current_group = [i]
+            
+            for j in range(i + 1, len(combined_texts)):
+                if j in processed_indices:
                     continue
                 
-                # Проверяем схожесть
-                similarity = similarity_matrix[i][j]
+                # Вычисляем схожесть
+                similarity = self.calculate_combined_similarity(combined_texts[i], combined_texts[j])
                 
-                if similarity >= self.similarity_threshold:
-                    current_group.append(compare_idx)
+                # Дополнительная проверка для названий
+                name_similarity = self.calculate_combined_similarity(
+                    str(df.iloc[i][name_column]) if pd.notna(df.iloc[i][name_column]) else "",
+                    str(df.iloc[j][name_column]) if pd.notna(df.iloc[j][name_column]) else ""
+                )
+                
+                # Считаем дубликатами если:
+                # 1. Общая схожесть выше порога ИЛИ
+                # 2. Схожесть названий очень высокая (>0.8)
+                if similarity >= self.similarity_threshold or name_similarity >= 0.8:
+                    current_group.append(j)
             
             if len(current_group) > 1:
                 duplicate_groups.append(current_group)
@@ -393,8 +299,8 @@ class DuplicateDetector:
         """Получение информации о методе определения схожести"""
         return f"""
         🔬 **Метод определения дубликатов:**
-        - Векторизация с TF-IDF
-        - Косинусное расстояние
+        - Комбинированный алгоритм
+        - Схожесть строк + Жаккар + нормализация
         - Порог схожести: {self.similarity_threshold:.2f}
-        - Предобработка: стемминг, удаление стоп-слов
+        - Дополнительная проверка названий (>0.8)
         """ 
