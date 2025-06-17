@@ -2,12 +2,11 @@ import pandas as pd
 from unidecode import unidecode
 from fuzzywuzzy import fuzz
 import re
-import os
+from typing import List, Dict, Tuple, Optional
 
 class DuplicateDetector:
-    def __init__(self, similarity_threshold=85):
+    def __init__(self, similarity_threshold: int = 85):
         self.similarity_threshold = similarity_threshold
-        self.duplicate_groups = []
         
         self.common_words = {
             'org_forms': r'\b(ип|ооо|оао|зао|тов|ltd|llc|inc|corporation|corp|company|co)\b',
@@ -34,7 +33,7 @@ class DuplicateDetector:
             }
         }
         
-    def normalize_text(self, text, remove_org_forms=True, remove_venue_types=True):
+    def normalize_text(self, text: str, remove_org_forms: bool = True, remove_venue_types: bool = True) -> str:
         if pd.isna(text):
             return ""
         
@@ -51,7 +50,7 @@ class DuplicateDetector:
         text = re.sub(self.common_words['extra_spaces'], ' ', text).strip()
         return text
 
-    def transliterate_text(self, text):
+    def transliterate_text(self, text: str) -> str:
         if pd.isna(text):
             return ""
         
@@ -61,7 +60,7 @@ class DuplicateDetector:
         except:
             return self.normalize_text(str(text))
 
-    def normalize_address(self, address):
+    def normalize_address(self, address: str) -> str:
         if pd.isna(address):
             return ""
         
@@ -76,7 +75,7 @@ class DuplicateDetector:
         
         return address
 
-    def calculate_similarity(self, text1, text2, address1=None, address2=None):
+    def calculate_similarity(self, text1: str, text2: str, address1: Optional[str] = None, address2: Optional[str] = None) -> float:
         if pd.isna(text1) or pd.isna(text2):
             return 0
         
@@ -128,9 +127,10 @@ class DuplicateDetector:
         
         return max(similarities) if similarities else 0
 
-    def find_duplicates(self, df, name_column='Название ТТ', address_column='Адрес ТТ', id_column='Id'):
-        print(f"Поиск дубликатов в {len(df)} записях...")
-        
+    def find_duplicates(self, df: pd.DataFrame, name_column: str, address_column: Optional[str] = None, id_column: Optional[str] = None) -> Tuple[List[List[int]], Dict]:
+        """
+        Возвращает дубликаты и статистику
+        """
         duplicate_groups = []
         processed_indices = set()
         
@@ -140,14 +140,14 @@ class DuplicateDetector:
                 
             current_group = [i]
             current_name = df.iloc[i][name_column]
-            current_address = df.iloc[i][address_column] if address_column in df.columns else None
+            current_address = df.iloc[i][address_column] if address_column and address_column in df.columns else None
             
             for j in range(i + 1, len(df)):
                 if j in processed_indices:
                     continue
                 
                 compare_name = df.iloc[j][name_column]
-                compare_address = df.iloc[j][address_column] if address_column in df.columns else None
+                compare_address = df.iloc[j][address_column] if address_column and address_column in df.columns else None
                 
                 similarity = self.calculate_similarity(
                     current_name, compare_name, 
@@ -158,74 +158,48 @@ class DuplicateDetector:
                     current_group.append(j)
             
             if len(current_group) > 1:
-                group_data = []
-                for idx in current_group:
-                    group_data.append({
-                        'index': idx,
-                        'id': df.iloc[idx][id_column],
-                        'name': df.iloc[idx][name_column],
-                        'address': df.iloc[idx][address_column] if address_column in df.columns else None
-                    })
-                
-                duplicate_groups.append(group_data)
+                duplicate_groups.append(current_group)
                 processed_indices.update(current_group)
-                
-                print(f"Найдена группа дубликатов ({len(current_group)} записей):")
-                for item in group_data:
-                    print(f"  - ID: {item['id']}, Название: {item['name']}")
         
-        print(f"\nВсего найдено групп дубликатов: {len(duplicate_groups)}")
-        return duplicate_groups
+        stats = {
+            'total_records': len(df),
+            'duplicate_groups': len(duplicate_groups),
+            'duplicate_records': sum(len(group) for group in duplicate_groups),
+            'unique_records': len(df) - sum(len(group) for group in duplicate_groups)
+        }
+        
+        return duplicate_groups, stats
 
-    def mark_duplicates(self, df, duplicate_groups, unique_id_column='Id уникальной тт 2'):
-        df_copy = df.copy()
+    def create_styled_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]]) -> Dict:
+        """
+        Создает стилизованный DataFrame с подсветкой дубликатов
+        """
+        # Цвета для разных групп дубликатов
+        colors = [
+            '#ffcccc',  # Светло-красный
+            '#ccffcc',  # Светло-зеленый
+            '#ccccff',  # Светло-синий
+            '#ffffcc',  # Светло-желтый
+            '#ffccff',  # Светло-фиолетовый
+            '#ccffff',  # Светло-голубой
+            '#ffddcc',  # Светло-оранжевый
+            '#ddccff',  # Светло-лиловый
+        ]
         
-        if unique_id_column not in df_copy.columns:
-            df_copy[unique_id_column] = None
+        styling = []
+        for _ in range(len(df)):
+            styling.append([""] * len(df.columns))
         
-        for group in duplicate_groups:
-            min_id = min(item['id'] for item in group)
-            
-            for item in group:
-                df_copy.loc[item['index'], unique_id_column] = min_id
+        for group_idx, group in enumerate(duplicate_groups):
+            color = colors[group_idx % len(colors)]
+            for row_idx in group:
+                for col_idx in range(len(df.columns)):
+                    styling[row_idx][col_idx] = f"background-color: {color};"
         
-        return df_copy
-
-def main():
-    input_file = "Sample-for-Agentsify.xlsx"
-    output_file = "Sample-for-Agentsify-Deduplicated.xlsx"
-    
-    if not os.path.exists(input_file):
-        print(f"Файл не найден: {input_file}")
-        return
-    
-    print(f"Читаем файл: {input_file}")
-    df = pd.read_excel(input_file)
-    
-    print(f"Загружено записей: {len(df)}")
-    print(f"Колонки: {list(df.columns)}")
-    
-    detector = DuplicateDetector(similarity_threshold=80)
-    
-    duplicate_groups = detector.find_duplicates(
-        df, 
-        name_column='Название ТТ',
-        address_column='Адрес ТТ',
-        id_column='Id'
-    )
-    
-    if duplicate_groups:
-        df_marked = detector.mark_duplicates(df, duplicate_groups)
-        
-        df_marked.to_excel(output_file, index=False)
-        print(f"\nРезультат сохранен в: {output_file}")
-        
-        marked_count = df_marked['Id уникальной тт 2'].notna().sum()
-        print(f"Отмечено записей как дубликаты: {marked_count}")
-        print(f"Групп дубликатов: {len(duplicate_groups)}")
-        
-    else:
-        print("Дубликаты не найдены")
-
-if __name__ == "__main__":
-    main()
+        return {
+            "data": df.values.tolist(),
+            "headers": df.columns.tolist(),
+            "metadata": {
+                "styling": styling,
+            },
+        } 
