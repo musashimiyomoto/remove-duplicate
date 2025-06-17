@@ -213,18 +213,35 @@ class DuplicateDetector:
     def create_grouped_dataframe(self, df: pd.DataFrame, duplicate_groups: List[List[int]]) -> pd.DataFrame:
         """Создание DataFrame с группировкой дубликатов"""
         grouped_df = df.copy()
-        grouped_df['Duplicate_Group'] = 'Unique'
         
-        for i, group in enumerate(duplicate_groups):
-            for idx in group:
-                if idx < len(grouped_df):
-                    grouped_df.loc[grouped_df.index[idx], 'Duplicate_Group'] = f'Group_{i+1}'
+        # Создаём колонку Id, если её нет
+        if 'Id' not in grouped_df.columns:
+            grouped_df['Id'] = range(len(grouped_df))
         
-        # Сортировка: сначала группы дубликатов, потом уникальные
-        grouped_df['sort_key'] = grouped_df['Duplicate_Group'].apply(
-            lambda x: (0, x) if x != 'Unique' else (1, x)
-        )
-        grouped_df = grouped_df.sort_values('sort_key').drop('sort_key', axis=1)
+        # Для каждой группы дубликатов находим минимальный Id и присваиваем его всем записям группы
+        for group in duplicate_groups:
+            if len(group) > 1:  # Проверяем, что это действительно группа дубликатов
+                # Получаем Id всех записей в группе
+                group_ids = []
+                for idx in group:
+                    if idx < len(grouped_df):
+                        group_ids.append(grouped_df.iloc[idx]['Id'])
+                
+                # Находим минимальный Id в группе
+                if group_ids:
+                    min_id = min(group_ids)
+                    
+                    # Присваиваем минимальный Id всем записям в группе, кроме одной (уникальной)
+                    # Оставляем одну запись с оригинальным Id, остальные получают минимальный Id
+                    first_record = True
+                    for idx in group:
+                        if idx < len(grouped_df):
+                            if not first_record:  # Не первая запись в группе
+                                grouped_df.iloc[idx, grouped_df.columns.get_loc('Id')] = min_id
+                            first_record = False
+        
+        # Сортировка: сначала записи с дубликатами (минимальные Id), потом уникальные
+        grouped_df = grouped_df.sort_values('Id')
         
         return grouped_df
 

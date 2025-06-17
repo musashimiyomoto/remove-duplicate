@@ -87,23 +87,7 @@ class DuplicateDetectorApp:
                     "headers": grouped_df.columns.tolist(),
                 }
 
-                report = f"🔍 **Duplicate search results (Committee Algorithm):**\n\n"
-                report += f"- Total records: **{self.stats['total_records']}**\n"
-                report += (
-                    f"- Duplicate groups found: **{self.stats['duplicate_groups']}**\n"
-                )
-                report += (
-                    f"- Duplicate records: **{self.stats['duplicate_records']}**\n"
-                )
-                report += f"- Unique records: **{self.stats['unique_records']}**\n\n"
-                report += f"💡 **Committee-based duplicate detection with 4 judges:**\n"
-                report += f"👨‍⚖️ **Judge 1**: Strict Control (Name + Address similarity)\n"
-                report += f"🗺️ **Judge 2**: Geo-Analyst (Location-focused)\n"
-                report += f"🏷️ **Judge 3**: Brand Analyzer (Brand name matching)\n"
-                report += f"⚖️ **Judge 4**: Integrator (Weighted scoring)\n\n"
-                report += f"🗳️ **Decision**: Minimum 2 votes required for duplicate classification\n"
-                report += f"🔬 **Advanced fuzzy matching** with TheFuzz library\n\n"
-                report += f"📊 **Groups are sorted by duplicate status - duplicate groups first, then unique records**"
+                report = ""
 
                 return grouped_data, report
             else:
