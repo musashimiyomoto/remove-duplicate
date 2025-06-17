@@ -1,8 +1,7 @@
 import gradio as gr
 import pandas as pd
 from duplicate_detector import DuplicateDetector
-from typing import Tuple, Optional, Dict, Any
-import io
+from typing import Tuple, Optional, Dict
 
 
 class DuplicateDetectorApp:
@@ -19,14 +18,12 @@ class DuplicateDetectorApp:
         try:
             self.current_df = pd.read_excel(file.name)
 
-            # Удаляем безымянные колонки
             unnamed_cols = [
                 col for col in self.current_df.columns if col.startswith("Unnamed")
             ]
             if unnamed_cols:
                 self.current_df = self.current_df.drop(columns=unnamed_cols)
 
-            # Автоматически находим нужные колонки
             name_col = self.detector.find_name_column(self.current_df)
             address_col = self.detector.find_address_column(self.current_df)
 
@@ -65,10 +62,8 @@ class DuplicateDetectorApp:
             return None, "❌ Please upload an Excel file first"
 
         try:
-            # Фиксированная точность 75% (для улучшенного метода)
             self.detector.similarity_threshold = 0.75
 
-            # Автоматически находим нужные колонки
             name_col = self.detector.find_name_column(self.current_df)
             address_col = self.detector.find_address_column(self.current_df)
 
@@ -83,7 +78,7 @@ class DuplicateDetectorApp:
                 styled_data = self.detector.create_styled_dataframe(
                     self.current_df,
                     self.duplicate_groups,
-                    True,  # используем темную тему для лучшей видимости
+                    True,
                 )
 
                 report = f"🔍 **Duplicate search results:**\n\n"
