@@ -11,22 +11,23 @@ import warnings
 warnings.filterwarnings('ignore')
 
 class DuplicateDetector:
-    def __init__(self, similarity_threshold: float = 0.70):
+    def __init__(self, similarity_threshold: float = 0.80):
         """
-        Детектор дубликатов с комбинацией нескольких методов
+        Детектор дубликатов с улучшенной логикой
         
         Args:
-            similarity_threshold: порог схожести от 0 до 1 (по умолчанию 0.70)
+            similarity_threshold: порог схожести от 0 до 1 (по умолчанию 0.80)
         """
         self.similarity_threshold = similarity_threshold
         self.vectorizer = None
         
-        # Регулярные выражения для базовой нормализации
+        # Регулярные выражения для нормализации
         self.patterns = {
             'extra_spaces': r'\s+',
-            'punctuation': r'[^\w\s]',
-            'numbers_only': r'^\d+$',
-            'org_forms': r'\b(ооо|оао|зао|ип|тов|ltd|llc|inc|corp|co)\b',
+            'punctuation': r'[^\w\s\d]',
+            'org_forms': r'\b(ооо|оао|зао|ип|тов|ltd|llc|inc|corp|co|общество|предприятие)\b',
+            'address_numbers': r'\b\d+[\/\-]?\d*\b',  # номера домов, квартир
+            'postal_codes': r'\b\d{5,6}\b',  # почтовые индексы
         }
 
     def generate_colors(self, num_colors: int, is_dark_theme: bool = False) -> List[str]:
@@ -47,40 +48,54 @@ class DuplicateDetector:
             colors.append(hex_color)
         return colors
 
-    def normalize_text(self, text: str) -> str:
-        """Базовая нормализация текста"""
+    def normalize_text(self, text: str, preserve_numbers: bool = True) -> str:
+        """
+        Улучшенная нормализация текста
+        
+        Args:
+            text: исходный текст
+            preserve_numbers: сохранять ли числа (важно для адресов)
+        """
         if pd.isna(text) or not text:
             return ""
         
         text = str(text).strip().lower()
         
-        # Убираем лишние пробелы и пунктуацию
-        text = re.sub(self.patterns['punctuation'], ' ', text)
+        # Убираем только некритичную пунктуацию, сохраняя числа и важные символы
+        if preserve_numbers:
+            text = re.sub(r'[,.\-№"\'()]', ' ', text)
+        else:
+            text = re.sub(self.patterns['punctuation'], ' ', text)
+        
+        # Убираем лишние пробелы
         text = re.sub(self.patterns['extra_spaces'], ' ', text).strip()
         
         return text
 
-    def normalize_text_strict(self, text: str) -> str:
-        """Строгая нормализация текста для более точного сравнения"""
-        if pd.isna(text) or not text:
+    def normalize_name(self, name: str) -> str:
+        """Специальная нормализация для названий организаций"""
+        if pd.isna(name) or not name:
             return ""
         
-        text = str(text).strip().lower()
+        name = str(name).strip().lower()
         
         # Убираем организационные формы
-        text = re.sub(self.patterns['org_forms'], '', text, flags=re.IGNORECASE)
+        name = re.sub(self.patterns['org_forms'], '', name, flags=re.IGNORECASE)
         
-        # Убираем пунктуацию и лишние пробелы
-        text = re.sub(self.patterns['punctuation'], ' ', text)
-        text = re.sub(self.patterns['extra_spaces'], ' ', text).strip()
+        # Убираем пунктуацию
+        name = re.sub(r'[^\w\s]', ' ', name)
+        name = re.sub(self.patterns['extra_spaces'], ' ', name).strip()
         
-        # Транслитерация для кириллицы
-        try:
-            text = unidecode(text)
-        except:
-            pass
+        return name
+
+    def extract_address_numbers(self, address: str) -> List[str]:
+        """Извлекает номера домов из адреса"""
+        if pd.isna(address) or not address:
+            return []
         
-        return text
+        # Находим все числа в адресе (номера домов, квартир и т.д.)
+        numbers = re.findall(self.patterns['address_numbers'], str(address))
+        return numbers
 
     def string_similarity(self, str1: str, str2: str) -> float:
         """Вычисление схожести строк через SequenceMatcher"""
@@ -88,52 +103,106 @@ class DuplicateDetector:
             return 0.0
         return SequenceMatcher(None, str1, str2).ratio()
 
-    def jaccard_similarity(self, str1: str, str2: str) -> float:
-        """Вычисление схожести Жаккара на основе слов"""
-        if not str1 or not str2:
+    def name_similarity(self, name1: str, name2: str) -> float:
+        """Специальная проверка схожести названий"""
+        if not name1 or not name2:
             return 0.0
         
-        set1 = set(str1.split())
-        set2 = set(str2.split())
+        # Нормализуем названия
+        norm1 = self.normalize_name(name1)
+        norm2 = self.normalize_name(name2)
         
-        intersection = set1.intersection(set2)
-        union = set1.union(set2)
-        
-        if not union:
-            return 0.0
-        
-        return len(intersection) / len(union)
-
-    def calculate_combined_similarity(self, text1: str, text2: str) -> float:
-        """Комбинированное вычисление схожести"""
-        if not text1 or not text2:
-            return 0.0
-        
-        # Базовая нормализация
-        norm1 = self.normalize_text(text1)
-        norm2 = self.normalize_text(text2)
-        
-        # Строгая нормализация
-        strict1 = self.normalize_text_strict(text1)
-        strict2 = self.normalize_text_strict(text2)
-        
-        # Различные метрики схожести
-        basic_sim = self.string_similarity(norm1, norm2)
-        strict_sim = self.string_similarity(strict1, strict2)
-        jaccard_sim = self.jaccard_similarity(norm1, norm2)
-        
-        # Проверка на точное совпадение после нормализации
-        if strict1 == strict2 and len(strict1) > 2:
+        # Точное совпадение после нормализации
+        if norm1 == norm2 and len(norm1) > 2:
             return 1.0
         
-        # Комбинированная оценка с весами
-        combined_score = (basic_sim * 0.4 + strict_sim * 0.4 + jaccard_sim * 0.2)
+        # Базовая схожесть
+        basic_sim = self.string_similarity(norm1, norm2)
         
-        return combined_score
+        # Проверяем, содержит ли одно название другое
+        if norm1 in norm2 or norm2 in norm1:
+            return max(basic_sim, 0.9)
+        
+        return basic_sim
+
+    def address_similarity(self, addr1: str, addr2: str) -> float:
+        """Проверка схожести адресов с учетом номеров домов"""
+        if not addr1 or not addr2:
+            return 0.0
+        
+        # Нормализуем адреса
+        norm1 = self.normalize_text(addr1, preserve_numbers=True)
+        norm2 = self.normalize_text(addr2, preserve_numbers=True)
+        
+        # Извлекаем номера домов
+        numbers1 = self.extract_address_numbers(addr1)
+        numbers2 = self.extract_address_numbers(addr2)
+        
+        # Если у обоих адресов есть номера домов и они разные, то адреса точно разные
+        if numbers1 and numbers2:
+            common_numbers = set(numbers1).intersection(set(numbers2))
+            if not common_numbers:
+                return 0.0  # Разные номера домов = разные адреса
+        
+        # Базовая схожесть адресов
+        basic_sim = self.string_similarity(norm1, norm2)
+        
+        # Если один адрес содержит номер дома, а другой нет, то снижаем схожесть
+        if (numbers1 and not numbers2) or (numbers2 and not numbers1):
+            basic_sim *= 0.8  # Снижаем на 20%
+        
+        return basic_sim
+
+    def are_duplicates(self, row1: pd.Series, row2: pd.Series, name_col: str, address_col: Optional[str] = None) -> bool:
+        """
+        Основная логика определения дубликатов
+        
+        Args:
+            row1, row2: строки для сравнения
+            name_col: колонка с названиями
+            address_col: колонка с адресами
+            
+        Returns:
+            True если записи являются дубликатами
+        """
+        name1 = str(row1[name_col]) if pd.notna(row1[name_col]) else ""
+        name2 = str(row2[name_col]) if pd.notna(row2[name_col]) else ""
+        
+        # Проверяем схожесть названий
+        name_sim = self.name_similarity(name1, name2)
+        
+        # Если названия очень разные, то это точно не дубликаты
+        if name_sim < 0.6:
+            return False
+        
+        # Если есть адреса, проверяем их
+        if address_col and address_col in row1.index and address_col in row2.index:
+            addr1 = str(row1[address_col]) if pd.notna(row1[address_col]) else ""
+            addr2 = str(row2[address_col]) if pd.notna(row2[address_col]) else ""
+            
+            addr_sim = self.address_similarity(addr1, addr2)
+            
+            # Если адреса очень разные (например, разные номера домов), то НЕ дубликаты
+            if addr_sim == 0.0:
+                return False
+            
+            # Комбинированная оценка с более мягкими требованиями
+            combined_sim = (name_sim * 0.7 + addr_sim * 0.3)
+            
+            # Условия для дубликатов:
+            # 1. Очень высокая схожесть названий (>0.85) ИЛИ
+            # 2. Хорошая схожесть названий (>0.7) И хорошая схожесть адресов (>0.7) ИЛИ  
+            # 3. Комбинированная оценка >0.75
+            return (name_sim >= 0.85 or 
+                   (name_sim >= 0.7 and addr_sim >= 0.7) or
+                   combined_sim >= 0.75)
+        else:
+            # Если нет адресов, то названия должны быть очень похожими
+            return name_sim >= 0.85
 
     def find_duplicates(self, df: pd.DataFrame, name_column: str, address_column: Optional[str] = None, id_column: Optional[str] = None) -> Tuple[List[List[int]], Dict]:
         """
-        Поиск дубликатов с использованием комбинированного алгоритма
+        Поиск дубликатов с улучшенной логикой
         
         Args:
             df: DataFrame с данными
@@ -147,46 +216,22 @@ class DuplicateDetector:
         if df.empty:
             return [], {'total_records': 0, 'duplicate_groups': 0, 'duplicate_records': 0, 'unique_records': 0}
         
-        # Создаем комбинированные тексты для сравнения
-        combined_texts = []
-        for idx, row in df.iterrows():
-            name_text = str(row[name_column]) if pd.notna(row[name_column]) else ""
-            address_text = ""
-            
-            if address_column and address_column in df.columns and pd.notna(row[address_column]):
-                address_text = str(row[address_column])
-            
-            # Объединяем название и адрес
-            combined_text = f"{name_text} {address_text}".strip()
-            combined_texts.append(combined_text)
-        
         # Находим группы дубликатов
         duplicate_groups = []
         processed_indices = set()
         
-        for i in range(len(combined_texts)):
+        for i in range(len(df)):
             if i in processed_indices:
                 continue
             
             current_group = [i]
             
-            for j in range(i + 1, len(combined_texts)):
+            for j in range(i + 1, len(df)):
                 if j in processed_indices:
                     continue
                 
-                # Вычисляем схожесть
-                similarity = self.calculate_combined_similarity(combined_texts[i], combined_texts[j])
-                
-                # Дополнительная проверка для названий
-                name_similarity = self.calculate_combined_similarity(
-                    str(df.iloc[i][name_column]) if pd.notna(df.iloc[i][name_column]) else "",
-                    str(df.iloc[j][name_column]) if pd.notna(df.iloc[j][name_column]) else ""
-                )
-                
-                # Считаем дубликатами если:
-                # 1. Общая схожесть выше порога ИЛИ
-                # 2. Схожесть названий очень высокая (>0.8)
-                if similarity >= self.similarity_threshold or name_similarity >= 0.8:
+                # Проверяем, являются ли записи дубликатами
+                if self.are_duplicates(df.iloc[i], df.iloc[j], name_column, address_column):
                     current_group.append(j)
             
             if len(current_group) > 1:
@@ -299,8 +344,8 @@ class DuplicateDetector:
         """Получение информации о методе определения схожести"""
         return f"""
         🔬 **Метод определения дубликатов:**
-        - Комбинированный алгоритм
-        - Схожесть строк + Жаккар + нормализация
-        - Порог схожести: {self.similarity_threshold:.2f}
-        - Дополнительная проверка названий (>0.8)
+        - Улучшенный алгоритм с проверкой адресов
+        - Учет номеров домов и различий в адресах
+        - Строгие требования к схожести названий (>80%)
+        - Комбинированная оценка: название + адрес
         """ 
