@@ -31,27 +31,6 @@ class DuplicateDetector:
             self.stemmer = None
             self.use_nltk = False
 
-    def generate_colors(
-        self, num_colors: int, is_dark_theme: bool = False
-    ) -> List[str]:
-        colors = []
-        for i in range(num_colors):
-            hue = i / num_colors
-
-            if is_dark_theme:
-                saturation = 0.6 + (i % 3) * 0.1
-                lightness = 0.4 + (i % 4) * 0.1
-            else:
-                saturation = 0.4 + (i % 3) * 0.1
-                lightness = 0.85 + (i % 3) * 0.05
-
-            rgb = colorsys.hls_to_rgb(hue, lightness, saturation)
-            hex_color = "#{:02x}{:02x}{:02x}".format(
-                int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
-            )
-            colors.append(hex_color)
-        return colors
-
     def normalize_text(self, text, sort_words=True):
         """Улучшенная нормализация текста с использованием NLTK"""
         if not isinstance(text, str): 
