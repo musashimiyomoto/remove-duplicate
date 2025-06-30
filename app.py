@@ -225,7 +225,7 @@ def main():
     app = DuplicateDetectorApp()
     interface = app.create_interface()
     interface.launch(
-        share=False, server_name="0.0.0.0", server_port=7860, show_api=False
+        share=True, server_name="0.0.0.0", server_port=7860, show_api=False
     )
 
 
