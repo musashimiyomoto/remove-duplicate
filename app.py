@@ -70,7 +70,6 @@ class DuplicateDetectorApp:
             if not name_col:
                 return None, "❌ Name column not found"
 
-            # Попытаемся найти колонку с ID
             id_col = None
             id_keywords = ['Id', 'id', 'айди', 'ид', 'номер', 'number']
             for col in self.current_df.columns:
@@ -79,29 +78,25 @@ class DuplicateDetectorApp:
                     id_col = col
                     break
 
-            # Используем min_votes=4 для хорошего баланса точности и покрытия
             self.duplicate_groups, self.stats = self.detector.find_duplicates(
                 df=self.current_df, name_column=name_col, address_column=address_col, id_column=id_col, min_votes=4
             )
-            print(f"🔍 Найденные группы дубликатов: {self.duplicate_groups}")
-            print(f"🔍 Количество групп: {len(self.duplicate_groups) if self.duplicate_groups else 0}")
-            print(f"🔍 Статистика: {self.stats}")
+            print(f"🔍 Found duplicate groups: {self.duplicate_groups}")
+            print(f"🔍 Number of groups: {len(self.duplicate_groups) if self.duplicate_groups else 0}")
+            print(f"🔍 Statistics: {self.stats}")
 
             if self.duplicate_groups and len(self.duplicate_groups) > 0:
-                # Создаем группированный DataFrame с колонкой группировки
                 grouped_df = self.detector.create_grouped_dataframe(
                     self.current_df,
                     self.duplicate_groups,
                     id_col
                 )
 
-                # Преобразуем в формат для отображения
                 grouped_data = {
                     "data": grouped_df.values.tolist(),
                     "headers": grouped_df.columns.tolist(),
                 }
 
-                # Создаем отчет
                 report = ""
 
                 return grouped_data, report
@@ -122,7 +117,6 @@ class DuplicateDetectorApp:
             return None
 
         try:
-            # Попытаемся найти колонку с ID
             id_col = None
             id_keywords = ['Id', 'id', 'айди', 'ид', 'номер', 'number']
             for col in self.current_df.columns:

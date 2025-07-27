@@ -15,13 +15,12 @@ def setup_nltk():
         print("- Loading punkt_tab (enhanced tokenization)...")
         nltk.download("punkt_tab", quiet=True)
 
-        # Проверяем доступность русских ресурсов
         try:
             from nltk.corpus import stopwords
             from nltk.stem import SnowballStemmer
             
             russian_stopwords = stopwords.words('russian')
-            stemmer = SnowballStemmer('russian')
+            SnowballStemmer('russian')
             print(f"- Russian stopwords loaded: {len(russian_stopwords)} words")
             print("- Russian stemmer ready")
             
